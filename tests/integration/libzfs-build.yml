@@ -1,0 +1,24 @@
+# Runs in an unprivileged Ubuntu container. Real pool access is tested by assertInstalledHost.
+- name: Verify host Python ZFS binding
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  tasks:
+    - name: Install binding through the production role
+      ansible.builtin.include_role:
+        name: cockpit_plugins
+        tasks_from: libzfs
+
+    - name: Exercise native ZFS library calls from the system interpreter
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import libzfs
+            assert callable(libzfs.ZFS)
+            assert libzfs.validate_pool_name("terrarium")
+            assert libzfs.validate_dataset_name("terrarium/test")
+            assert libzfs.validate_snapshot_name("terrarium/test@check")
+            print(libzfs.__file__)
+      changed_when: false

@@ -119,27 +119,29 @@ export class IntegrationContext {
     const wheelhousePath = join(this.linuxBundleDir, "ansible-wheelhouse");
     rmSync(wheelhousePath, { recursive: true, force: true });
     mkdirSync(wheelhousePath, { recursive: true });
-    await run(
-      [
-        "python3",
-        "-m",
-        "pip",
-        "download",
-        "--dest",
-        wheelhousePath,
-        "--only-binary=:all:",
-        "--implementation",
-        "cp",
-        "--python-version",
-        "312",
-        "--abi",
-        "cp312",
-        "--platform",
-        ansibleWheelhousePlatform(this.config.hcloudBinaryTarget),
-        ...TERRARIUM_ANSIBLE_PIP_PACKAGES
-      ],
-      { cwd: this.config.repoRoot }
-    );
+    for (const pythonVersion of ["312", "314"]) {
+      await run(
+        [
+          "python3",
+          "-m",
+          "pip",
+          "download",
+          "--dest",
+          wheelhousePath,
+          "--only-binary=:all:",
+          "--implementation",
+          "cp",
+          "--python-version",
+          pythonVersion,
+          "--abi",
+          `cp${pythonVersion}`,
+          "--platform",
+          ansibleWheelhousePlatform(this.config.hcloudBinaryTarget),
+          ...TERRARIUM_ANSIBLE_PIP_PACKAGES
+        ],
+        { cwd: this.config.repoRoot }
+      );
+    }
 
     const sourceTarPath = join(this.linuxBundleDir, "terrarium-src.tar");
     rmSync(sourceTarPath, { force: true });

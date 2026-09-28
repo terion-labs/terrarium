@@ -5,10 +5,14 @@ terrarium_cockpit_plugin_runtime_deps:
   - procinfo
   - python3-botocore
   - python3-dateutil
-  - python3-libzfs
   - rsync
   - smartmontools
   - sqlite3
+
+# 45Drives v2.4.1-4, pinned because the extension must match the host's Python/ZFS ABI.
+terrarium_libzfs_source_commit: bd800c327705522a77773178017925218f6935cd
+terrarium_libzfs_source_sha256: 57ecce721bc23d532d99cab18ff1ae7f1c3e05035e4c815db9c12a2766fee3d4
+terrarium_libzfs_build_dir: /var/lib/terrarium/build/libzfs
 
 terrarium_cockpit_plugin_build_deps:
   - build-essential

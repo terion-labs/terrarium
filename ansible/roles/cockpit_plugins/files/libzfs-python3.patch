@@ -1,0 +1,23 @@
+--- a/nvpair.pxi
++++ b/nvpair.pxi
+@@ -377,9 +377,6 @@
+             if type(value[0]) is int:
+                 self.set(key, value, nvpair.DATA_TYPE_INT32_ARRAY)
+ 
+-            if type(value[0]) is long:
+-                self.set(key, value, nvpair.DATA_TYPE_INT64_ARRAY)
+-
+             if type(value[0]) is str or type(value) is unicode:
+                 self.set(key, value, nvpair.DATA_TYPE_STRING_ARRAY)
+ 
+--- a/libzfs.pyx
++++ b/libzfs.pyx
+@@ -2509,7 +2509,7 @@
+ 
+             if value.startswith(zfs.VDEV_TYPE_RAIDZ):
+                 self.nvlist['type'] = zfs.VDEV_TYPE_RAIDZ
+-                self.nvlist['nparity'] = long(value[-1])
++                self.nvlist['nparity'] = int(value[-1])
+ 
+     property guid:
+         def __get__(self):

@@ -19,11 +19,16 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ["24.04", "26.04"]
     timeout-minutes: 360
     concurrency:
-      group: terrarium-integration-${{ github.workflow }}-${{ github.ref }}-smoke
+      group: terrarium-integration-${{ github.workflow }}-${{ github.ref }}-smoke-${{ matrix.ubuntu }}
       cancel-in-progress: false
     env:
+      HCLOUD_IMAGE: ubuntu-${{ matrix.ubuntu }}
       HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
       HCLOUD_LOCATION: ${{ secrets.HCLOUD_LOCATION }}
       HCLOUD_SERVER_TYPE: ${{ secrets.HCLOUD_SERVER_TYPE }}
@@ -42,8 +47,8 @@ jobs:
       CIFS_PASSWORD: ${{ secrets.CIFS_PASSWORD }}
       CIFS_HOST_PATH_BASE: ${{ secrets.CIFS_HOST_PATH_BASE }}
       TERRARIUM_INTEGRATION_IP_DNS_DOMAIN: ${{ vars.TERRARIUM_INTEGRATION_IP_DNS_DOMAIN || 'nip.io' }}
-      TERRARIUM_INTEGRATION_SLUG: gha-${{ github.run_id }}-${{ github.run_attempt }}-smoke
-      TERRARIUM_INTEGRATION_OUTPUT_DIR: ${{ github.workspace }}/tests/integration/output/smoke
+      TERRARIUM_INTEGRATION_SLUG: gha-${{ github.run_id }}-${{ github.run_attempt }}-smoke-${{ matrix.ubuntu }}
+      TERRARIUM_INTEGRATION_OUTPUT_DIR: ${{ github.workspace }}/tests/integration/output/smoke-${{ matrix.ubuntu }}
       KEEP_ON_FAILURE: ${{ inputs.keep_on_failure && 'true' || 'false' }}
       ONLY_SCENARIO: ${{ inputs.only }}
     steps:

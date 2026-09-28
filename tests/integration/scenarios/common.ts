@@ -833,6 +833,10 @@ export async function captureFailureArtifacts(context: IntegrationContext, hosts
 
 /** Verifies the installed host’s service/timer health via CLI and systemd. */
 export async function assertInstalledHost(host: SshHost): Promise<void> {
+  // Exercise the native binding against the real ZFS pool, not just an import.
+  await host.exec(`/usr/bin/python3 -c 'import libzfs
+with libzfs.ZFS() as z:
+    assert any(p.name == "terrarium" for p in z.pools)'`);
   await expectRemoteContains(host, remoteCtl("status"), "terrarium-oauth2-proxy.service");
   await expectSystemdActive(host, "traefik");
   await expectSystemdActive(host, "terrarium-traefik-sync.timer");

@@ -45,6 +45,7 @@ export class HetznerCloudProvider {
   private readonly token: string;
   private readonly logger: IntegrationLogger;
   private readonly requestedLocation: string;
+  private readonly image: string;
   private readonly requestTimeoutMs = 30000;
   private readonly maxAttempts = 8;
   private resolvedLocationName = "";
@@ -54,6 +55,7 @@ export class HetznerCloudProvider {
     this.token = config.hcloudToken;
     this.logger = logger;
     this.requestedLocation = config.hcloudLocation.trim();
+    this.image = config.hcloudImage;
   }
 
   private async requestResponse(method: string, path: string, body?: unknown): Promise<Response> {
@@ -177,7 +179,7 @@ export class HetznerCloudProvider {
       const body = {
         name,
         server_type: serverType,
-        image: "ubuntu-24.04",
+        image: this.image,
         location: candidateLocation,
         ssh_keys: sshKeyIds,
         labels

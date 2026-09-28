@@ -7,6 +7,35 @@ on:
   pull_request:
 
 jobs:
+  libzfs:
+    name: Python ZFS binding (${{ matrix.ubuntu }}, ${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ["24.04", "26.04"]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    container: ubuntu:${{ matrix.ubuntu }}
+    timeout-minutes: 30
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      ANSIBLE_ROLES_PATH: ${{ github.workspace }}/ansible/roles
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ansible
+        run: |
+          apt-get update
+          apt-get install -y python3-venv ca-certificates
+          python3 -m venv /opt/test-ansible
+          /opt/test-ansible/bin/pip install ansible==13.7.0
+      - name: Build and exercise the native binding
+        run: /opt/test-ansible/bin/ansible-playbook -i localhost, tests/integration/libzfs-build.yml
+      - name: Verify reconciliation does not rebuild an unchanged binding
+        run: |
+          /opt/test-ansible/bin/ansible-playbook -i localhost, tests/integration/libzfs-build.yml > /tmp/libzfs-repeat.log
+          cat /tmp/libzfs-repeat.log
+          grep -E 'localhost.*changed=0 .*failed=0' /tmp/libzfs-repeat.log
+
   validate:
     runs-on: ubuntu-24.04
     steps:

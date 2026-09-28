@@ -100,8 +100,13 @@ function normalizeKeyContent(content: string): string {
 
 /** Loads the harness configuration from CLI options plus environment secrets. */
 export function loadIntegrationConfig(options: IntegrationCliOptions): IntegrationConfig {
+  const hcloudImage = optionalEnv("HCLOUD_IMAGE", "ubuntu-24.04");
+  if (!["ubuntu-24.04", "ubuntu-26.04"].includes(hcloudImage)) {
+    throw new Error(`invalid HCLOUD_IMAGE "${hcloudImage}"; expected ubuntu-24.04 or ubuntu-26.04`);
+  }
   const repoRoot = resolve(process.cwd());
-  const slug = optionalEnv("TERRARIUM_INTEGRATION_SLUG", computeSlug());
+  // Dots in the Ubuntu matrix value must not turn server names into shared hostnames.
+  const slug = slugify(optionalEnv("TERRARIUM_INTEGRATION_SLUG", computeSlug()));
   const outputDir = resolve(optionalEnv("TERRARIUM_INTEGRATION_OUTPUT_DIR", join(repoRoot, "tests/integration/output", slug)));
   mkdirSync(outputDir, { recursive: true });
 
@@ -139,6 +144,7 @@ export function loadIntegrationConfig(options: IntegrationCliOptions): Integrati
     hcloudToken: requiredEnv("HCLOUD_TOKEN"),
     hcloudLocation: requiredEnv("HCLOUD_LOCATION"),
     hcloudServerType: requiredEnv("HCLOUD_SERVER_TYPE").toLowerCase(),
+    hcloudImage,
     hcloudBinaryTarget: optionalEnv("HCLOUD_BINARY_TARGET", "x64"),
     hcloudVolumeSizeGb: Number(optionalEnv("HCLOUD_VOLUME_SIZE_GB", "40")),
     sshPrivateKey: normalizedPrivateKey,

@@ -21,11 +21,12 @@ const logger = {
   }
 } as unknown as IntegrationLogger;
 
-function createProvider(hcloudLocation = "fsn1"): HetznerCloudProvider {
+function createProvider(hcloudLocation = "fsn1", hcloudImage = "ubuntu-24.04"): HetznerCloudProvider {
   return new HetznerCloudProvider(
     {
       hcloudToken: "token-1",
-      hcloudLocation
+      hcloudLocation,
+      hcloudImage
     } as IntegrationConfig,
     logger
   );
@@ -58,6 +59,16 @@ afterEach(() => {
 });
 
 describe("Hetzner Cloud provider cleanup", () => {
+  test.each(["ubuntu-24.04", "ubuntu-26.04"])("createServer uses the selected %s image", async (image) => {
+    const calls = installFetchMock([
+      new Response(JSON.stringify({ locations: [{ name: "fsn1" }] })),
+      new Response(JSON.stringify({ server: { id: 42, name: "server-1" } }), { status: 201 }),
+      new Response(JSON.stringify({ server: { id: 42, name: "server-1", public_net: { ipv4: { ip: "192.0.2.42" } } } }))
+    ]);
+    await createProvider("fsn1", image).createServer("server-1", "cx22", "fsn1", [1], {});
+    expect(JSON.parse(String(calls[1].init?.body)).image).toBe(image);
+  });
+
   test("createServer retries transient placement failures", async () => {
     const sleeps: number[] = [];
     setSleepMock(async (ms) => {

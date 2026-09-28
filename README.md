@@ -9,7 +9,7 @@
     </picture>
 </p>
 
-Managing secure, isolated infrastructure usually requires a lot of specialized knowledge. Terrarium changes that. It transforms a standard Ubuntu 24.04 VPS into a friendly, secure home for your applications, development environments, and AI agents—complete with a built-in time machine for undoing mistakes. 
+Managing secure, isolated infrastructure usually requires a lot of specialized knowledge. Terrarium changes that. It transforms a standard Ubuntu 24.04 or 26.04 VPS into a friendly, secure home for your applications, development environments, and AI agents—complete with a built-in time machine for undoing mistakes.
 
 Whether you're running complex Docker Compose stacks, giving AI agents room to experiment, or hosting your own web-based IDEs, Terrarium brings simplicity to operations that used to be complicated. It isolates your workloads in LXD containers, keeping your host system pristine and secure. If an experiment goes wrong or a service breaks, you don't have to rebuild everything from scratch. You can simply roll back in time using automated ZFS snapshots. 
 
@@ -37,7 +37,7 @@ With Terrarium, you get the freedom of a full VPS without the fear of turning yo
 
 ## 🚀 Quick Install
 
-To get started on a fresh Ubuntu 24.04 server, simply run:
+To get started on a fresh Ubuntu 24.04 or 26.04 server, simply run:
 
 ```bash
 curl -fsSL https://github.com/terion-name/terrarium/releases/latest/download/install.sh | bash

@@ -50,7 +50,7 @@ require_root() {
 ensure_os() {
   source /etc/os-release
   [[ "${ID:-}" == "ubuntu" ]] || die "Ubuntu is required"
-  [[ "${VERSION_ID:-}" == "24.04" ]] || die "Ubuntu 24.04 is required"
+  [[ "${VERSION_ID:-}" == "24.04" || "${VERSION_ID:-}" == "26.04" ]] || die "Ubuntu 24.04 or 26.04 is required"
 }
 
 ensure_bootstrap_deps() {

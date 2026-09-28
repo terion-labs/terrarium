@@ -298,8 +298,8 @@ function ensureOs(): void {
   if (os.ID !== "ubuntu") {
     fail("Ubuntu is required");
   }
-  if (os.VERSION_ID !== "24.04") {
-    fail("Ubuntu 24.04 is required");
+  if (os.VERSION_ID !== "24.04" && os.VERSION_ID !== "26.04") {
+    fail("Ubuntu 24.04 or 26.04 is required");
   }
 }
 

@@ -17,6 +17,7 @@ const relevantEnvKeys = [
   "HCLOUD_TOKEN",
   "HCLOUD_LOCATION",
   "HCLOUD_SERVER_TYPE",
+  "HCLOUD_IMAGE",
   "HCLOUD_BINARY_TARGET",
   "HCLOUD_VOLUME_SIZE_GB",
   "HCLOUD_SSH_PRIVATE_KEY",
@@ -143,6 +144,28 @@ function loadConfig(overrides: EnvOverrides): Promise<IntegrationConfig> {
 }
 
 describe("integration config", () => {
+  test.each(["ubuntu-24.04", "ubuntu-26.04"])("selects %s hosts", async (image) => {
+    const config = await loadConfig({
+      HCLOUD_IMAGE: image,
+      ZITADEL_CLOUD_ISSUER: "https://zitadel.example.test",
+      ZITADEL_CLOUD_PAT: "zitadel-pat"
+    });
+    expect(config.hcloudImage).toBe(image);
+  });
+
+  test("rejects unsupported host images", async () => {
+    await expect(loadConfig({ HCLOUD_IMAGE: "ubuntu-25.10" })).rejects.toThrow("invalid HCLOUD_IMAGE");
+  });
+
+  test("normalizes matrix versions in resource names", async () => {
+    const config = await loadConfig({
+      TERRARIUM_INTEGRATION_SLUG: "gha-123-1-smoke-26.04",
+      ZITADEL_CLOUD_ISSUER: "https://zitadel.example.test",
+      ZITADEL_CLOUD_PAT: "zitadel-pat"
+    });
+    expect(config.slug).toBe("gha-123-1-smoke-26-04");
+  });
+
   test("uses explicit ZITADEL provider selection", async () => {
     const config = await loadConfig({
       TERRARIUM_INTEGRATION_IDP_PROVIDER: "zitadel",

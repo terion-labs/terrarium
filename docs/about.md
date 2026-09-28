@@ -1,6 +1,6 @@
 # About Terrarium
 
-Terrarium transforms a standard Ubuntu 24.04 VPS into a much friendlier, safer, and incredibly forgiving home for your applications and isolated environments. 
+Terrarium transforms a standard Ubuntu 24.04 or 26.04 VPS into a much friendlier, safer, and incredibly forgiving home for your applications and isolated environments.
 
 It was built to solve a very modern problem: today's AI agents, development tools, and complex self-hosted apps often need more freedom than standard Docker containers can comfortably provide. But giving them unlimited access to your host operating system is a recipe for disaster. 
 

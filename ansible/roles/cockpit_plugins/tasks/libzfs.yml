@@ -1,0 +1,142 @@
+- name: Install distribution Python ZFS binding on Ubuntu 24.04
+  ansible.builtin.apt:
+    name: python3-libzfs
+    state: present
+  when: ansible_facts.distribution_version == '24.04'
+
+- name: Build Python ZFS binding on Ubuntu 26.04
+  when: ansible_facts.distribution_version == '26.04'
+  block:
+    - name: Install Python ZFS binding build dependencies
+      ansible.builtin.apt:
+        name:
+          - build-essential
+          - ca-certificates
+          - libzfslinux-dev
+          - patch
+          - python3-dev
+          - python3-venv
+        state: present
+
+    - name: Read system Python ABI and local extension directory
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - "import sysconfig; print(sysconfig.get_config_var('SOABI')); print(sysconfig.get_path('platlib', scheme='posix_local'))"
+      register: terrarium_libzfs_python
+      changed_when: false
+
+    - name: Read installed ZFS development library version
+      ansible.builtin.command: dpkg-query -W -f=${Version} libzfslinux-dev
+      register: terrarium_libzfs_zfs_version
+      changed_when: false
+
+    - name: Identify Python ZFS binding build
+      ansible.builtin.set_fact:
+        # Include the patch and toolchain recipe so changes invalidate existing builds.
+        terrarium_libzfs_build_id: "{{ terrarium_libzfs_source_sha256 }}:{{ terrarium_libzfs_python.stdout_lines[0] }}:{{ terrarium_libzfs_zfs_version.stdout }}:{{ lookup('ansible.builtin.file', role_path ~ '/files/libzfs-python3.patch') | hash('sha256') }}:cython-3.2.4-setuptools-84.0.0-wheel-0.48.0-v1"
+        terrarium_libzfs_install_dir: "{{ terrarium_libzfs_python.stdout_lines[1] }}"
+
+    - name: Check installed Python ZFS binding build
+      ansible.builtin.shell: |
+        test "$(cat {{ (terrarium_libzfs_build_dir ~ '/installed-build') | quote }} 2>/dev/null)" = {{ terrarium_libzfs_build_id | quote }} &&
+        /usr/bin/python3 -c 'import libzfs; assert callable(libzfs.ZFS)'
+      register: terrarium_libzfs_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Compile and install matching Python ZFS binding
+      when: terrarium_libzfs_installed.rc != 0
+      block:
+        - name: Create private Python ZFS build directory
+          ansible.builtin.file:
+            path: "{{ terrarium_libzfs_build_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+
+        - name: Download pinned Python ZFS binding source
+          ansible.builtin.get_url:
+            url: "https://codeload.github.com/45Drives/python3-libzfs/tar.gz/{{ terrarium_libzfs_source_commit }}"
+            dest: "{{ terrarium_libzfs_build_dir }}/source.tar.gz"
+            checksum: "sha256:{{ terrarium_libzfs_source_sha256 }}"
+            mode: "0600"
+
+        - name: Remove previous Python ZFS build outputs
+          ansible.builtin.file:
+            path: "{{ terrarium_libzfs_build_dir }}/{{ item }}"
+            state: absent
+          loop:
+            - source
+            - wheels
+            - venv
+
+        - name: Create Python ZFS source and wheel directories
+          ansible.builtin.file:
+            path: "{{ terrarium_libzfs_build_dir }}/{{ item }}"
+            state: directory
+            mode: "0700"
+          loop:
+            - source
+            - wheels
+
+        - name: Extract verified Python ZFS binding source
+          ansible.builtin.unarchive:
+            src: "{{ terrarium_libzfs_build_dir }}/source.tar.gz"
+            dest: "{{ terrarium_libzfs_build_dir }}/source"
+            remote_src: true
+            extra_opts: [--strip-components=1]
+
+        # Upstream retains a Python 2-only `long` branch; Cython 3 rejects it.
+        - name: Copy Python 3 compatibility patch
+          ansible.builtin.copy:
+            src: libzfs-python3.patch
+            dest: "{{ terrarium_libzfs_build_dir }}/python3.patch"
+            mode: "0600"
+
+        - name: Apply Python 3 compatibility patch
+          ansible.builtin.command: "patch --batch --fuzz=0 -p1 -i {{ terrarium_libzfs_build_dir }}/python3.patch"
+          args:
+            chdir: "{{ terrarium_libzfs_build_dir }}/source"
+
+        - name: Create isolated Python ZFS build environment
+          ansible.builtin.command: "/usr/bin/python3 -m venv {{ terrarium_libzfs_build_dir }}/venv"
+
+        - name: Install pinned Python ZFS build tools
+          ansible.builtin.command: >-
+            {{ terrarium_libzfs_build_dir }}/venv/bin/python -m pip install
+            Cython==3.2.4 setuptools==84.0.0 wheel==0.48.0
+
+        - name: Configure binding against Ubuntu ZFS headers
+          ansible.builtin.command: ./configure --prefix=/usr
+          args:
+            chdir: "{{ terrarium_libzfs_build_dir }}/source"
+
+        - name: Build Python ZFS wheel for the system interpreter
+          ansible.builtin.command: >-
+            {{ terrarium_libzfs_build_dir }}/venv/bin/python -m pip wheel
+            --no-build-isolation --no-deps --wheel-dir {{ terrarium_libzfs_build_dir }}/wheels .
+          args:
+            chdir: "{{ terrarium_libzfs_build_dir }}/source"
+          environment:
+            # Upstream setup.py imports configure's generated config.py.
+            PYTHONPATH: "{{ terrarium_libzfs_build_dir }}/source"
+
+        # Install only this extension in Python's local directory. Never replace system Python.
+        - name: Install Python ZFS wheel for Cockpit
+          ansible.builtin.shell: >-
+            {{ (terrarium_libzfs_build_dir ~ '/venv/bin/python') | quote }} -m pip install
+            --no-index --no-deps --upgrade --target {{ terrarium_libzfs_install_dir | quote }}
+            {{ (terrarium_libzfs_build_dir ~ '/wheels') | quote }}/libzfs-*.whl
+
+        - name: Verify compiled Python ZFS binding
+          ansible.builtin.command: /usr/bin/python3 -c 'import libzfs; assert callable(libzfs.ZFS)'
+          changed_when: false
+
+        - name: Record successful Python ZFS build
+          ansible.builtin.copy:
+            content: "{{ terrarium_libzfs_build_id }}\n"
+            dest: "{{ terrarium_libzfs_build_dir }}/installed-build"
+            mode: "0600"

@@ -46,7 +46,7 @@ const ERROR_TEXT_MARKERS = [
   "service unavailable",
   "gateway timeout"
 ] as const;
-const COCKPIT_TEXT_MARKERS = ["Cockpit", "Log in", "Username", "Password", "Ubuntu 24.04"] as const;
+const COCKPIT_TEXT_MARKERS = ["Cockpit", "Log in", "Username", "Password", "Ubuntu 24.04", "Ubuntu 26.04"] as const;
 const TRAEFIK_TEXT_MARKERS = ["Traefik", "Dashboard", "HTTP", "Routers", "Services"] as const;
 const LXD_TEXT_MARKERS = ["LXD", "Instances", "Projects", "Storage"] as const;
 const USERNAME_INPUT_SELECTORS = [

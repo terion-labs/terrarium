@@ -1,3 +1,6 @@
+- name: Install Python ZFS binding for the host distribution
+  ansible.builtin.import_tasks: libzfs.yml
+
 - name: Install Cockpit plugin runtime dependencies
   ansible.builtin.apt:
     name: "{{ terrarium_cockpit_plugin_runtime_deps }}"

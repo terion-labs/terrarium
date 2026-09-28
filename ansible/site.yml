@@ -189,12 +189,12 @@
       terrarium_syncoid_target_dataset: "{{ terrarium_syncoid_target_dataset }}"
       terrarium_syncoid_ssh_key: "{{ terrarium_syncoid_ssh_key }}"
   pre_tasks:
-    - name: Assert Ubuntu 24.04
+    - name: Assert supported Ubuntu LTS
       ansible.builtin.assert:
         that:
           - ansible_distribution == "Ubuntu"
-          - ansible_distribution_version == '24.04'
-        fail_msg: Terrarium v1 supports Ubuntu 24.04 only.
+          - ansible_distribution_version in ['24.04', '26.04']
+        fail_msg: Terrarium supports Ubuntu 24.04 and 26.04 LTS.
     - name: Check Docker registry credentials for hardened images
       ansible.builtin.stat:
         path: "{{ terrarium_docker_registry_config_path }}"

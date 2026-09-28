@@ -82,15 +82,18 @@ jobs:
             *) echo "unsupported release architecture: ${{ matrix.arch }}" >&2; exit 1 ;;
           esac
           mkdir -p release/ansible-wheelhouse
-          python3 -m pip download \
-            --dest release/ansible-wheelhouse \
-            --only-binary=:all: \
-            --implementation cp \
-            --python-version 312 \
-            --abi cp312 \
-            --platform "${pip_platform}" \
-            ansible==13.7.0 \
-            passlib==1.7.4
+          # Keep each host's system Python: Noble uses 3.12, Resolute uses 3.14.
+          for python_version in 312 314; do
+            python3 -m pip download \
+              --dest release/ansible-wheelhouse \
+              --only-binary=:all: \
+              --implementation cp \
+              --python-version "${python_version}" \
+              --abi "cp${python_version}" \
+              --platform "${pip_platform}" \
+              ansible==13.7.0 \
+              passlib==1.7.4
+          done
 
       - name: Package release bundle
         run: |

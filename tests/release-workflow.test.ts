@@ -49,7 +49,8 @@ describe("release workflow", () => {
     expect(source).toContain('pip_platform="manylinux2014_x86_64"');
     expect(source).toContain('pip_platform="manylinux2014_aarch64"');
     expect(source).toContain("--only-binary=:all:");
-    expect(source).toContain("--python-version 312");
+    expect(source).toContain("for python_version in 312 314; do");
+    expect(source).toContain('--python-version "${python_version}"');
     expect(source).toContain("ansible==13.7.0");
     expect(source).toContain("passlib==1.7.4");
     expect(source).toContain("cp -a ansible release/ansible");

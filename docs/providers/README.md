@@ -2,7 +2,7 @@
 
 Terrarium works beautifully across many cloud providers, but the absolute best experience comes from following one simple pattern:
 
-1. Create a fresh **Ubuntu 24.04 VPS**.
+1. Create a fresh **Ubuntu 24.04 or 26.04 VPS**.
 2. Add your **SSH key** during creation (so you don't need a password).
 3. Attach a **separate block storage volume** (if your provider offers it).
 4. Run the Terrarium installer in **`disk`** mode.

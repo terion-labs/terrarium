@@ -23,6 +23,7 @@ export type IntegrationConfig = {
   hcloudToken: string;
   hcloudLocation: string;
   hcloudServerType: string;
+  hcloudImage: string;
   hcloudBinaryTarget: string;
   hcloudVolumeSizeGb: number;
   sshPrivateKey: string;

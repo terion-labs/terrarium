@@ -15,7 +15,7 @@ describe("integration scenario timeout guardrails", () => {
     expect(commonSource).toContain("Date.now() + (options.timeoutMs ?? LXD_API_POLL_TIMEOUT_MS)");
     expect(commonSource).toContain("assertSafeLxdApiRootResponse(response, host.domains.lxd, host.domains.auth);");
     expect(commonSource).toContain("external OIDC LXD API for ${host.label}");
-    expect(commonSource).toContain("local ZITADEL LXD API for ${host.label}");
+    expect(commonSource).toContain("local IDP LXD API for ${host.label}");
     expect(commonSource.match(/verifyLxdApi\(host, context\)/g)?.length).toBe(2);
   });
 

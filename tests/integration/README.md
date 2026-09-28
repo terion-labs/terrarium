@@ -118,6 +118,7 @@ so repository secrets must include the three required `LOGTO_*` variables above.
 
 Optional:
 
+- `HCLOUD_IMAGE` selects `ubuntu-24.04` or `ubuntu-26.04`, defaulting to `ubuntu-24.04`. CI runs both host images.
 - `HCLOUD_BINARY_TARGET` defaults to `x64`.
 - `HCLOUD_VOLUME_SIZE_GB` defaults to `40`.
 - `HCLOUD_SSH_USER` defaults to `root`.

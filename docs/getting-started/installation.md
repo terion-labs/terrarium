@@ -4,13 +4,15 @@ Ready to turn your plain Ubuntu VPS into a hardened, LXD-powered container host?
 
 ## Requirements
 
-- Ubuntu Server 24.04 LTS
+- Ubuntu Server 24.04 or 26.04 LTS
 - root access on the host
 - SSH key-based access
 - Optional Docker Hardened Images registry access. Terrarium first uses the upstream DHI registry when `/root/.docker/config.json` is present, then uses Terrarium's public GHCR mirror of the same pinned DHI image indexes, and only uses pinned upstream public fallbacks when hardened image use or mirrors are disabled. Set `terrarium_docker_hardened_images: true` or explicit image variables when you want installation to fail closed unless the upstream DHI images are available.
 - either:
   - a dedicated extra disk for the LXD ZFS pool, which is the recommended setup
   - or enough root-disk space to use `--storage-mode file`
+
+On Ubuntu 26.04, installation builds the Cockpit ZFS Python binding from a pinned, checksum-verified source revision against the host’s Python 3.14 and ZFS libraries. This requires access to GitHub and PyPI and takes additional time on the first install. Reconciliation rebuilds it when the binding source, build recipe, Python ABI, or ZFS development package changes. Ubuntu 24.04 continues to use its distribution package and Python 3.12.
 
 If you still need to create the VPS itself, start with the provider setup guides:
 

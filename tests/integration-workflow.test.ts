@@ -21,8 +21,8 @@ describe("integration workflows", () => {
     expect(postSmoke.needs).toBeUndefined();
     expect(smoke.if).toBe("${{ inputs.only == '' || inputs.only == 'smoke' }}");
     expect(postSmoke.if).toBe("${{ inputs.only == '' || inputs.only == 'full' }}");
-    expect(smoke.steps.at(-1).run).toContain("bun run tests/integration/index.ts --suite smoke");
-    expect(postSmoke.steps.at(-1).run).toContain("bun run tests/integration/index.ts --suite full --only full");
+    expect(smoke.steps.find((step: { name: string }) => step.name === "Run smoke suite").run).toContain("bun run tests/integration/index.ts --suite smoke");
+    expect(postSmoke.steps.find((step: { name: string }) => step.name === "Run post-smoke suite").run).toContain("bun run tests/integration/index.ts --suite full --only full");
   });
 
   test("parallel integration slices use isolated resources and SSH keys", () => {
@@ -32,24 +32,26 @@ describe("integration workflows", () => {
     const postSmoke = full.jobs.post_smoke;
     const smoke = standaloneSmoke.jobs.smoke;
 
-    expect(fullSmoke.env.TERRARIUM_INTEGRATION_SLUG).toBe("gha-${{ github.run_id }}-${{ github.run_attempt }}-smoke");
-    expect(postSmoke.env.TERRARIUM_INTEGRATION_SLUG).toBe("gha-${{ github.run_id }}-${{ github.run_attempt }}-post-smoke");
+    expect(fullSmoke.env.TERRARIUM_INTEGRATION_SLUG).toBe("gha-${{ github.run_id }}-${{ github.run_attempt }}-smoke-${{ matrix.ubuntu }}");
+    expect(postSmoke.env.TERRARIUM_INTEGRATION_SLUG).toBe("gha-${{ github.run_id }}-${{ github.run_attempt }}-post-smoke-${{ matrix.ubuntu }}");
     expect(fullSmoke.env.TERRARIUM_INTEGRATION_IP_DNS_DOMAIN).toBe(
       "${{ vars.TERRARIUM_INTEGRATION_IP_DNS_DOMAIN || 'nip.io' }}"
     );
     expect(postSmoke.env.TERRARIUM_INTEGRATION_IP_DNS_DOMAIN).toBe(
       "${{ vars.TERRARIUM_INTEGRATION_IP_DNS_DOMAIN || 'nip.io' }}"
     );
-    expect(fullSmoke.env.TERRARIUM_INTEGRATION_OUTPUT_DIR).toBe("${{ github.workspace }}/tests/integration/output/smoke");
-    expect(postSmoke.env.TERRARIUM_INTEGRATION_OUTPUT_DIR).toBe("${{ github.workspace }}/tests/integration/output/post-smoke");
-    expect(fullSmoke.concurrency.group).toBe("terrarium-integration-${{ github.workflow }}-${{ github.ref }}-smoke");
-    expect(postSmoke.concurrency.group).toBe("terrarium-integration-${{ github.workflow }}-${{ github.ref }}-post-smoke");
+    expect(fullSmoke.env.TERRARIUM_INTEGRATION_OUTPUT_DIR).toBe("${{ github.workspace }}/tests/integration/output/smoke-${{ matrix.ubuntu }}");
+    expect(postSmoke.env.TERRARIUM_INTEGRATION_OUTPUT_DIR).toBe("${{ github.workspace }}/tests/integration/output/post-smoke-${{ matrix.ubuntu }}");
+    expect(fullSmoke.concurrency.group).toBe("terrarium-integration-${{ github.workflow }}-${{ github.ref }}-smoke-${{ matrix.ubuntu }}");
+    expect(postSmoke.concurrency.group).toBe("terrarium-integration-${{ github.workflow }}-${{ github.ref }}-post-smoke-${{ matrix.ubuntu }}");
 
-    expect(smoke.env.TERRARIUM_INTEGRATION_SLUG).toBe("gha-${{ github.run_id }}-${{ github.run_attempt }}-smoke");
+    expect(smoke.env.TERRARIUM_INTEGRATION_SLUG).toBe("gha-${{ github.run_id }}-${{ github.run_attempt }}-smoke-${{ matrix.ubuntu }}");
     expect(smoke.env.TERRARIUM_INTEGRATION_IP_DNS_DOMAIN).toBe("${{ vars.TERRARIUM_INTEGRATION_IP_DNS_DOMAIN || 'nip.io' }}");
-    expect(smoke.concurrency.group).toBe("terrarium-integration-${{ github.workflow }}-${{ github.ref }}-smoke");
+    expect(smoke.concurrency.group).toBe("terrarium-integration-${{ github.workflow }}-${{ github.ref }}-smoke-${{ matrix.ubuntu }}");
 
     for (const job of [fullSmoke, postSmoke, smoke]) {
+      expect(job.strategy.matrix.ubuntu).toEqual(["24.04", "26.04"]);
+      expect(job.env.HCLOUD_IMAGE).toBe("ubuntu-${{ matrix.ubuntu }}");
       const keygenStep = job.steps.find((step: { name?: string }) => step.name === "Generate integration SSH key");
       expect(keygenStep?.run).toContain("ssh-keygen -t ed25519");
       expect(keygenStep?.run).toContain("HCLOUD_SSH_PRIVATE_KEY_FILE=");
