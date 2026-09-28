@@ -20,6 +20,7 @@ If you are new to Terrarium, start here:
 - [Operations](operations/README.md)
 - [Reference](reference/README.md)
 - [Architecture](architecture.md)
+- [For AI Agents](agents.md)
 
 ## What Terrarium Installs
 

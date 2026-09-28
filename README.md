@@ -34,6 +34,7 @@ With Terrarium, you get the freedom of a full VPS without the fear of turning yo
 - [Provider Guides](docs/providers/README.md)
 - [Operations & Backups](docs/operations/README.md)
 - [terrariumctl Reference](docs/reference/terrariumctl.md)
+- 🤖 **For AI agents:** [agents.md](https://terrarium.terion.name/agents.md), a single-file guide to installing, operating, and building on Terrarium ([source](docs/public/agents.md))
 
 ## 🚀 Quick Install
 
@@ -73,7 +74,7 @@ Terrarium is designed to be lightweight, but giving your environments a bit of b
 ## 📖 Popular Guides
 
 Want to see what you can build? Check out our guides:
-- [Host an Isolated VSCodium Web IDE](docs/guides/vscode.md)
+- [Host an Isolated code-server Web IDE](docs/guides/vscode.md)
 - [Run AI Agents like OpenClaw](docs/guides/openclaw.md)
 - [Deploy Multi-Service Docker Compose Stacks](docs/guides/compose.md)
 - [Protect Published Services with OIDC](docs/guides/auth-protection.md)

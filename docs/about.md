@@ -11,7 +11,7 @@ Terrarium sits perfectly in the middle. It gives every workload its own fully is
 Terrarium shines when you need to run:
 
 - **AI Agents (like OpenClaw or Hermes):** Give them a realistic playground where they can install packages and run shell commands without risking your main server.
-- **Browser-Based Workspaces:** Host cloud IDEs like VSCodium Web for seamless, anywhere access to your code.
+- **Browser-Based Workspaces:** Host cloud IDEs like code-server for seamless, anywhere access to your code.
 - **Experimental Sandboxes:** Spin up temporary environments for client work or trying out new tech, then easily tear them down.
 - **Complex Docker Compose Stacks:** Run multi-service apps (like a web app, database, and Redis cache) completely isolated from one another.
 
@@ -58,7 +58,7 @@ Traefik is a reverse proxy that lives on host and can pass traffic in containers
 
 **If you know what you want to build:**
 1. Browse the [Guides](./guides/).
-2. Learn how to deploy [OpenClaw](./guides/openclaw), [Hermes](./guides/hermes), [VSCodium Web](./guides/vscode), or [Compose stacks](./guides/compose).
+2. Learn how to deploy [OpenClaw](./guides/openclaw), [Hermes](./guides/hermes), [code-server](./guides/vscode), or [Compose stacks](./guides/compose).
 
 **If you're planning for the worst:**
 1. Read up on [Backups and Restore](./operations/backups-and-restore).

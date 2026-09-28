@@ -68,7 +68,7 @@ It's advanced security without the complex configuration. You get to move fast a
 
 <div class="terrarium-cards">
   <a class="terrarium-card" href="./guides/vscode">
-    <strong>VSCodium Web IDE</strong>
+    <strong>code-server Web IDE</strong>
     <span>Spin up browser-based coding environments with their own filesystems, completely isolated and protected by SSO.</span>
   </a>
   <a class="terrarium-card" href="./guides/openclaw">
@@ -138,5 +138,9 @@ It's advanced security without the complex configuration. You get to move fast a
   <a class="terrarium-card" href="./reference/terrariumctl">
     <strong>Command Reference</strong>
     <span>Explore the CLI tool for backups, restores, and system reconfiguration.</span>
+  </a>
+  <a class="terrarium-card" href="./agents">
+    <strong>For AI Agents</strong>
+    <span>A single-file guide your agent can read to install, operate, and build on Terrarium.</span>
   </a>
 </div>

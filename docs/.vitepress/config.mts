@@ -37,11 +37,24 @@ gtag("config", ${JSON.stringify(googleAnalyticsId)});`
   ];
 }
 
+const base = resolveBase();
+
 export default defineConfig({
   title: "Terrarium",
   description: "Secure, rewindable VPS environments for agents, dev tools, and isolated apps.",
-  base: resolveBase(),
-  head: resolveGoogleAnalyticsHead(),
+  base,
+  head: [
+    [
+      "link",
+      {
+        rel: "alternate",
+        type: "text/markdown",
+        href: `${base}agents.md`,
+        title: "Terrarium guide for AI agents"
+      }
+    ],
+    ...resolveGoogleAnalyticsHead()
+  ],
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {
@@ -51,6 +64,7 @@ export default defineConfig({
       { text: "Guides", link: "/guides/" },
       { text: "Operations", link: "/operations/" },
       { text: "Reference", link: "/reference/" },
+      { text: "For AI Agents", link: "/agents" },
       { text: "GitHub", link: "https://github.com/terion-name/terrarium" }
     ],
     sidebar: [
@@ -59,7 +73,8 @@ export default defineConfig({
         items: [
           { text: "About", link: "/about" },
           { text: "Security Model", link: "/security" },
-          { text: "Architecture", link: "/architecture" }
+          { text: "Architecture", link: "/architecture" },
+          { text: "For AI Agents", link: "/agents" }
         ]
       },
       {
@@ -100,7 +115,7 @@ export default defineConfig({
           { text: "Overview", link: "/guides/" },
           { text: "OpenClaw", link: "/guides/openclaw" },
           { text: "Hermes", link: "/guides/hermes" },
-          { text: "VSCodium Web IDE", link: "/guides/vscode" },
+          { text: "code-server Web IDE", link: "/guides/vscode" },
           { text: "Isolated Docker Compose deployments", link: "/guides/compose" },
           { text: "Dokploy", link: "/guides/dokploy" },
           { text: "Coolify", link: "/guides/coolify" },

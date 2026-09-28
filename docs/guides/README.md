@@ -16,7 +16,7 @@ You can run databases, internal APIs, and experimental AI agents without worryin
 
 ### Choose Your Guide:
 
-- **[VSCodium Web IDE](vscode.md):** The absolute best way to code in the cloud. Spin up a browser-based editor that is completely isolated and secured by SSO.
+- **[code-server Web IDE](vscode.md):** The absolute best way to code in the cloud. Spin up a browser-based editor that is completely isolated and secured by SSO.
 - **[OpenClaw](openclaw.md):** Give the powerful autonomous AI agent a safe, disposable sandbox to execute code in.
 - **[Hermes](hermes.md):** Run agent-driven background services and expose only the user interface to the web.
 - **[Docker Compose Stacks](compose.md):** The cleanest way to run multi-container apps (like a web server + Postgres + Redis) without making a mess of your host machine.

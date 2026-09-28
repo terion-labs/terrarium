@@ -7,7 +7,7 @@ You don't need to write custom authentication code, deploy a separate identity p
 This is perfect for:
 - Self-hosted admin dashboards (like Pi-hole or Grafana).
 - Internal company tools that shouldn't be public.
-- Web IDEs (like VSCodium) where you want an extra layer of security.
+- Web IDEs (like code-server) where you want an extra layer of security.
 - AI Agent web interfaces (like OpenClaw or Hermes).
 
 ---

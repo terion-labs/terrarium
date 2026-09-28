@@ -1,8 +1,8 @@
-# VSCodium Web IDE on Terrarium
+# code-server Web IDE on Terrarium
 
-Imagine having a full, powerful coding environment running in the cloud that you can access from any web browser. That's what `VSCodium` offers. 
+Imagine having a full, powerful coding environment running in the cloud that you can access from any web browser. That's what [code-server](https://github.com/coder/code-server) offers: VS Code running on a server and served to your browser.
 
-Unlike Microsoft's branded VS Code or the legacy `code-server`, VSCodium is fully open-source and uses the open extension marketplace by default.
+code-server is open source, installs as a single package with its own systemd service, and uses the Open VSX extension marketplace by default.
 
 Running your cloud IDE in Terrarium is the ultimate developer flex:
 - **Total Isolation:** Your code, extensions, and terminal commands live inside a secure container.
@@ -24,62 +24,42 @@ lxc launch ubuntu:24.04 devbox --profile dev
 
 The `dev` profile gives the normal `terrarium` user passwordless sudo, so the editor terminal can install packages without working directly as root.
 
-## 2. Install VSCodium
+## 2. Install code-server
 
 Jump into your new container:
 ```bash
 trm exec devbox
 ```
 
-Run these commands to add the VSCodium repository and install the editor:
+Run the official install script. On Ubuntu it installs the code-server `.deb` package:
 ```bash
 sudo apt-get update
-sudo apt-get install -y wget gpg apt-transport-https openssl ca-certificates
-
-wget https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg \
-  -O /tmp/vscodium-archive-keyring.asc
-sudo install -m 0644 /tmp/vscodium-archive-keyring.asc /usr/share/keyrings/vscodium-archive-keyring.asc
-
-echo 'deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/vscodium-archive-keyring.asc ] https://paulcarroty.gitlab.io/vscodium-deb-rpm-repo/debs vscodium main' \
-  | sudo tee /etc/apt/sources.list.d/vscodium.list > /dev/null
-
-sudo apt-get update
-sudo apt-get install -y codium
+sudo apt-get install -y curl openssl
+curl -fsSL https://code-server.dev/install.sh | sh
 ```
 
-## 3. Secure and Start the Editor
+## 3. Configure and Start the Editor
 
-We need to generate a secure "Connection Token" so that only *you* can log into the editor. 
+By default, code-server only listens on `127.0.0.1`, which Terrarium's proxy cannot reach. Write its config before the first start so it listens on all interfaces and uses a strong random password.
 
 Still inside the container, run:
 ```bash
-sudo install -d -m 0755 /etc/codium-web
-openssl rand -hex 32 | sudo tee /etc/codium-web/token > /dev/null
-sudo chown terrarium:terrarium /etc/codium-web/token
-sudo chmod 600 /etc/codium-web/token
+mkdir -p ~/.config/code-server
+cat > ~/.config/code-server/config.yaml <<EOF
+bind-addr: 0.0.0.0:8080
+auth: password
+password: $(openssl rand -hex 32)
+cert: false
+EOF
+chmod 600 ~/.config/code-server/config.yaml
 ```
 
-Now, let's create a background service so VSCodium starts automatically if the container reboots:
+`cert: false` is intentional. Terrarium's Traefik terminates TLS in front of the editor.
+
+Now start code-server as a systemd service for the `terrarium` user, so it comes back automatically after a container reboot:
 ```bash
-sudo tee /etc/systemd/system/codium-web.service > /dev/null <<'EOF'
-[Unit]
-Description=VSCodium Web Server
-After=network.target
-
-[Service]
-User=terrarium
-Group=terrarium
-WorkingDirectory=/home/terrarium
-ExecStart=/bin/bash -lc '/usr/bin/codium serve-web --host 0.0.0.0 --port 8080 --connection-token "$(cat /etc/codium-web/token)" --accept-server-license-terms'
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now codium-web.service
+sudo systemctl enable --now code-server@terrarium
+systemctl status code-server@terrarium --no-pager
 exit
 ```
 
@@ -96,19 +76,20 @@ terrariumctl proxy sync
 Terrarium will automatically grab an SSL certificate, require SSO, and route `code.example.com` to your new web IDE.
 
 If your Terrarium install uses the local managed ZITADEL, `terrariumctl proxy sync` also updates the route-auth callback URL in ZITADEL automatically. With an external provider such as ZITADEL Cloud, add this callback URL to that provider manually:
+
 ```text
 https://code.example.com/oauth2/callback
 ```
 
 ## 5. How to Log In
 
-After SSO, VSCodium will ask for your Connection Token.
+After SSO, code-server will ask for its password.
 
-To view your token, run this command on your Terrarium host:
+To view the password, run this command on your Terrarium host:
 ```bash
-trm exec devbox -- cat /etc/codium-web/token
+trm exec devbox -- grep '^password:' /home/terrarium/.config/code-server/config.yaml
 ```
 
-Copy that long string, paste it into the browser, and log into your new cloud development environment.
+Copy the value, paste it into the browser, and log into your new cloud development environment.
 
-*(Tip: To reset your password, run that `openssl rand -hex 32 > /etc/codium-web/token` command again inside the container and restart the service.)*
+*(Tip: To change the password, edit `password:` in `~/.config/code-server/config.yaml` inside the container and run `sudo systemctl restart code-server@terrarium`.)*
