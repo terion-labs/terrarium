@@ -153,6 +153,8 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
+      # Each scenario needs two hosts; keep the combined smoke/full peak at six.
+      max-parallel: 1
       matrix:
         ubuntu: ["24.04", "26.04"]
     timeout-minutes: 360
