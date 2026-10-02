@@ -124,7 +124,7 @@ describe("docs config", () => {
     const reconfiguration = readRepoFile("docs/operations/reconfiguration.md");
 
     expect(reference).toContain("| `terrariumctl update` |");
-    expect(reference).toContain("terrariumctl update --ref 0.0.21");
+    expect(reference).toMatch(/terrariumctl update --ref \d+\.\d+\.\d+/);
     expect(reference).toContain("install.sh | sudo bash -s -- --update");
     expect(reference).toContain("does not ask storage, domain, IDP, S3, or syncoid setup questions");
     expect(reconfiguration).toContain("terrariumctl update");

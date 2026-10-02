@@ -359,7 +359,8 @@ export class LogtoCloudProvider implements IntegrationOidcProvider {
     name: string,
     type: "Traditional" | "Native",
     redirectUris: string[],
-    postLogoutRedirectUris: string[]
+    postLogoutRedirectUris: string[],
+    created: CreatedResource[]
   ): Promise<{ appId: string; clientId: string; clientSecret: string }> {
     const app = await this.api<LogtoApplication>("POST", "/applications", {
       name,
@@ -372,9 +373,15 @@ export class LogtoCloudProvider implements IntegrationOidcProvider {
     });
     const appId = app.id ?? app.appId ?? "";
     const clientId = app.clientId ?? appId;
-    const clientSecret = type === "Native" ? "" : app.secret ?? app.clientSecret ?? "";
-    if (!appId || !clientId || (type !== "Native" && !clientSecret)) {
+    if (!appId || !clientId) {
       throw new Error("failed to create Logto OIDC application");
+    }
+    created.push({ label: `app ${appId}`, delete: () => this.deleteApp("", appId) });
+    let clientSecret = type === "Native" ? "" : app.secret ?? app.clientSecret ?? "";
+    if (type !== "Native" && !clientSecret) {
+      const secret = await this.api<{ value?: string }>("POST", `/applications/${encodeURIComponent(appId)}/secrets`, { name: "terrarium-integration" });
+      clientSecret = secret.value ?? "";
+      if (!clientSecret) throw new Error("Logto application secret response did not include a value");
     }
     if (clientSecret) {
       this.redactionValues.add(clientSecret);
@@ -441,9 +448,9 @@ export class LogtoCloudProvider implements IntegrationOidcProvider {
         appName,
         "Traditional",
         buildLogtoCloudManagementRedirectUris(domains, routeCallbackUris, options.extraDomains ?? []),
-        [`https://${domains.manage}`]
+        [`https://${domains.manage}`],
+        created
       );
-      created.push({ label: `app ${app.appId}`, delete: () => this.deleteApp(projectId, app.appId) });
       await onProgress?.({ type: "app", fixtureSlug: slug, projectId, appId: app.appId, appName });
 
       const lxdApp = await this.createApplication(
@@ -451,9 +458,9 @@ export class LogtoCloudProvider implements IntegrationOidcProvider {
         lxdAppName,
         "Native",
         buildLogtoCloudLxdRedirectUris(domains, options.extraDomains ?? []),
-        [`https://${domains.lxd}`]
+        [`https://${domains.lxd}`],
+        created
       );
-      created.push({ label: `app ${lxdApp.appId}`, delete: () => this.deleteApp(projectId, lxdApp.appId) });
       await onProgress?.({ type: "app", fixtureSlug: slug, projectId, appId: lxdApp.appId, appName: lxdAppName });
 
       const adminPassword = this.generatePassword();

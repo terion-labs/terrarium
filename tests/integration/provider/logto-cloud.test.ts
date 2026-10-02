@@ -267,6 +267,34 @@ describe("Logto Cloud provider", () => {
     });
   });
 
+  test("creates a dedicated secret when the application response omits the legacy secret", async () => {
+    const calls = installFetchMock((call) => {
+      if (call.init?.method === "POST" && callPath(call) === "/api/applications" && jsonBody(call).type === "Traditional") return Response.json({ id: "app-1" });
+      if (callPath(call) === "/api/applications/app-1/secrets") return Response.json({ name: "terrarium-integration", value: "current-client-secret" });
+      return successfulLogtoResponse(call);
+    });
+    const fixture = await createProvider().provisionFixture("current-api", { manage: "manage.test", proxy: "proxy.test", lxd: "lxd.test", auth: "auth.test" }, "terrarium-admins");
+    expect(fixture.clientId).toBe("app-1");
+    expect(fixture.clientSecret).toBe("current-client-secret");
+    expect(fixture.lxdClientSecret).toBe("");
+    const secrets = calls.filter((call) => callPath(call).endsWith("/secrets"));
+    expect(secrets).toHaveLength(1);
+    expect(secrets[0]?.init?.method).toBe("POST");
+    expect(jsonBody(secrets[0]!)).toEqual({ name: "terrarium-integration" });
+  });
+
+  test("removes a newly created application when secret creation fails", async () => {
+    const calls = installFetchMock((call) => {
+      if (call.init?.method === "POST" && callPath(call) === "/api/applications") return Response.json({ id: "app-1" });
+      if (callPath(call) === "/api/applications/app-1/secrets") return new Response("unavailable", { status: 503 });
+      return successfulLogtoResponse(call);
+    });
+    await expect(createProvider().provisionFixture("secret-failure", { manage: "manage.test", proxy: "proxy.test", lxd: "lxd.test", auth: "auth.test" }, "terrarium-admins")).rejects.toThrow("HTTP 503");
+    expect(calls.filter((call) => call.init?.method === "DELETE").map(callPath)).toEqual([
+      "/api/applications/app-1", "/api/roles/role-bystanders", "/api/roles/role-admins", "/api/roles/role-agents", "/api/roles/role-terrarium-admins"
+    ]);
+  });
+
   test("cleans up partial provisioning in reverse order and redacts secrets in the thrown error", async () => {
     const calls = installFetchMock((call) => {
       const method = call.init?.method ?? "GET";
