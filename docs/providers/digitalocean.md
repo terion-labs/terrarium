@@ -22,7 +22,7 @@ To give your containers and time machine the best performance:
 Once your Droplet is online, run the installer:
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/install.sh | bash
 ```
 
 ## Creating the Server (CLI / doctl)

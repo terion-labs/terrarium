@@ -233,7 +233,7 @@ Use `terrariumctl update` on an existing Terrarium host when you want newer Terr
 
 ```bash
 terrariumctl update
-terrariumctl update --ref 0.0.21
+terrariumctl update --ref 0.0.38
 terrariumctl update --skip-reconfigure
 ```
 
@@ -242,12 +242,20 @@ The command updates `/opt/terrarium`, refreshes Ansible collections, and then ru
 When using the bootstrap installer, pass `--update` to get the same behavior from a release bundle:
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/latest/download/install.sh | sudo bash -s -- --update
+curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/install.sh | sudo bash -s -- --update
 ```
+
+Starting with 0.0.38, release signatures use the `terion-labs/terrarium` repository. Use the bootstrap command above when upgrading an older installation. Its existing updater can also select the new publisher explicitly:
+
+```bash
+sudo env TERRARIUM_GITHUB_REPO=terion-labs/terrarium terrariumctl update --ref 0.0.38
+```
+
+For a historical release signed under `terion-name/terrarium`, set `TERRARIUM_GITHUB_REPO=terion-name/terrarium` explicitly when selecting that older version.
 
 ## proxy labels
 
-Terrarium publishes container services from the LXD `user.proxy` config key. The value is one route or a comma/newline-separated list of routes.
+Terrarium publishes instance services from the LXD `user.proxy` config key. The value is one route or a comma/newline-separated list of routes.
 
 ```bash
 lxc config set my-app user.proxy "https://app.example.com:8080"

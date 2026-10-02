@@ -51,6 +51,7 @@ jobs:
           echo "$PWD/.ansible-venv/bin" >> "$GITHUB_PATH"
           export PATH="$PWD/.ansible-venv/bin:$PATH"
           bun install
+          bunx playwright install --with-deps chromium
           bun run build
           bun run docs:build
           cd ansible

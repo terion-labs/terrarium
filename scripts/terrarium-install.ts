@@ -33,7 +33,7 @@ import {
 } from "./lib/idp-provider";
 
 const PREFIX = "terrariumctl install";
-const REPO_URL = process.env.TERRARIUM_REPO_URL ?? "https://github.com/terion-name/terrarium.git";
+const REPO_URL = process.env.TERRARIUM_REPO_URL ?? "https://github.com/terion-labs/terrarium.git";
 const REPO_DIR = process.env.TERRARIUM_REPO_DIR ?? "/opt/terrarium";
 const BUNDLE_DIR = process.env.TERRARIUM_BUNDLE_DIR ?? "";
 const GENERATED_ROOT_PASSWORD_PATH = "/etc/terrarium/secrets/cockpit_root_password";

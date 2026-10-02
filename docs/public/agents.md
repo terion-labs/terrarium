@@ -1,7 +1,7 @@
 # Terrarium: Guide for AI Agents
 
 > This file is for AI agents that install, operate, or build on a Terrarium host.
-> Human docs: https://terrarium.terion.name/ · Source: https://github.com/terion-name/terrarium
+> Human docs: https://terrarium.terion.name/ · Source: https://github.com/terion-labs/terrarium
 > Terrarium is beta software (current release line `0.0.0-betaN`). If this file and `terrariumctl --help` disagree, trust `--help` on the host.
 
 ## What Terrarium is
@@ -60,19 +60,19 @@ Run as root on the fresh host.
 ### Interactive (for a human at the keyboard)
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/install.sh | bash
 ```
 
 `install.sh` is a thin bootstrap. It downloads the release bundle, which contains the compiled `terrariumctl` and the Ansible assets, into `/opt/terrarium` and runs `terrariumctl install`. It accepts `--ref TAG` (a tag-like ref downloads that release, a branch-like ref such as `main` builds from source) and `--update`. It forwards every other flag to `terrariumctl install`. To pin a release:
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/download/0.0.0-beta3/install.sh | bash
+curl -fsSL https://github.com/terion-labs/terrarium/releases/download/0.0.38/install.sh | bash
 ```
 
 ### Non-interactive (for agents and automation)
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/latest/download/install.sh | bash -s -- \
+curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/install.sh | bash -s -- \
   --non-interactive --yes \
   --email admin@example.com \
   --acme-email certs@example.com \

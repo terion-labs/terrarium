@@ -28,7 +28,7 @@ Because you cannot attach a secondary disk:
 Because you only have one disk, you **must** select `file` mode during the installer.
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/install.sh | bash
 ```
 
 During the interactive prompts, when asked for your storage strategy, choose **`file`**. Terrarium will ask how much of your root disk to carve out for your containers. 

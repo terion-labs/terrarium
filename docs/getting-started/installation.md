@@ -28,7 +28,7 @@ Or browse the full [Provider Guides](../providers/README.md) section first.
 Most users should use the interactive installer. Just run this single command:
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/install.sh | bash
 ```
 
 The published `install.sh` is intentionally thin. It downloads the matching release bundle from GitHub Releases, unpacks the compiled `terrariumctl` binary plus the Ansible provisioning assets into `/opt/terrarium`, and runs the real installer there. Default and tag-like release installs fail closed if the release cannot be resolved or downloaded; source builds require an explicit branch-like `--ref`, for example `main`.
@@ -36,7 +36,7 @@ The published `install.sh` is intentionally thin. It downloads the matching rele
 If you want to pin a specific release instead of `latest`, use the tagged asset directly:
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/download/0.0.0-beta3/install.sh | bash
+curl -fsSL https://github.com/terion-labs/terrarium/releases/download/0.0.38/install.sh | bash
 ```
 
 ## Install Modes
@@ -44,13 +44,13 @@ curl -fsSL https://github.com/terion-name/terrarium/releases/download/0.0.0-beta
 Interactive mode is the default and is the best fit for most first installs. It guides you through the process, asking a few simple questions.
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/install.sh | bash
 ```
 
 Non-interactive mode is for automation, templates, or repeated installs:
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/latest/download/install.sh | bash -s -- \
+curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/install.sh | bash -s -- \
   --non-interactive \
   --email admin@your-domain.tld \
   --acme-email certs@your-domain.tld \

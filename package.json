@@ -1,7 +1,7 @@
 {
   "name": "terrarium",
   "private": true,
-  "version": "0.0.0-beta3",
+  "version": "0.0.38",
   "packageManager": "bun@1.2.15",
   "scripts": {
     "build": "bun run scripts/build.ts",

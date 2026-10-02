@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPO_URL="${TERRARIUM_REPO_URL:-https://github.com/terion-name/terrarium.git}"
-GITHUB_REPO="${TERRARIUM_GITHUB_REPO:-terion-name/terrarium}"
+REPO_URL="${TERRARIUM_REPO_URL:-https://github.com/terion-labs/terrarium.git}"
+GITHUB_REPO="${TERRARIUM_GITHUB_REPO:-terion-labs/terrarium}"
 REF=""
 UPDATE=false
 EMBEDDED_BOOTSTRAP_REF="" # TERRARIUM_RELEASE_REF

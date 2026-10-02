@@ -65,7 +65,7 @@ export default defineConfig({
       { text: "Operations", link: "/operations/" },
       { text: "Reference", link: "/reference/" },
       { text: "For AI Agents", link: "/agents" },
-      { text: "GitHub", link: "https://github.com/terion-name/terrarium" }
+      { text: "GitHub", link: "https://github.com/terion-labs/terrarium" }
     ],
     sidebar: [
       {
@@ -135,7 +135,7 @@ export default defineConfig({
       }
     ],
     socialLinks: [
-      { icon: "github", link: "https://github.com/terion-name/terrarium" }
+      { icon: "github", link: "https://github.com/terion-labs/terrarium" }
     ],
     search: {
       provider: "local"

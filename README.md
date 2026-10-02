@@ -5,7 +5,7 @@
 
 <p align="center">
     <picture>
-        <img src="https://raw.githubusercontent.com/terion-name/terrarium/main/assets/banner.webp" alt="Terrarium" width="100%" style="max-width: 800px">
+        <img src="https://raw.githubusercontent.com/terion-labs/terrarium/main/assets/banner.webp" alt="Terrarium" width="100%" style="max-width: 800px">
     </picture>
 </p>
 
@@ -41,7 +41,7 @@ With Terrarium, you get the freedom of a full VPS without the fear of turning yo
 To get started on a fresh Ubuntu 24.04 or 26.04 server, simply run:
 
 ```bash
-curl -fsSL https://github.com/terion-name/terrarium/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/install.sh | bash
 ```
 
 Terrarium automatically provisions your host with everything you need for a modern, secure setup:
