@@ -66,7 +66,7 @@ curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/ins
 `install.sh` is a thin bootstrap. It downloads the release bundle, which contains the compiled `terrariumctl` and the Ansible assets, into `/opt/terrarium` and runs `terrariumctl install`. It accepts `--ref TAG` (a tag-like ref downloads that release, a branch-like ref such as `main` builds from source) and `--update`. It forwards every other flag to `terrariumctl install`. To pin a release:
 
 ```bash
-curl -fsSL https://github.com/terion-labs/terrarium/releases/download/0.0.39/install.sh | bash
+curl -fsSL https://github.com/terion-labs/terrarium/releases/download/0.0.40/install.sh | bash
 ```
 
 ### Non-interactive (for agents and automation)

@@ -30,7 +30,8 @@ export async function ensureIngressInstance(member: string, network: string, run
   const name = ingressInstanceName(member);
   const instances = await listInstances(run);
   let instance = instances.find((instance) => instance.name === name);
-  if (instance && (!isInfrastructureInstance(instance) || instance.config["user.terrarium.member"] !== member || instance.type !== "container" || instance.location && instance.location !== member)) {
+  // Standalone LXD reports location as "none"; placement belongs to clusters only.
+  if (instance && (!isInfrastructureInstance(instance) || instance.config["user.terrarium.member"] !== member || instance.type !== "container" || (host.clustered && instance.location !== member))) {
     throw new Error(`Refusing to replace ${name}: it is not this member's Terrarium ingress helper`);
   }
   if (!instance) {

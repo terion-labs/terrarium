@@ -1,8 +1,43 @@
 import { expect, test } from "bun:test";
-import { managedInstanceAddress } from "./lxd-ingress";
-import { parseInstance } from "./lxd-instance";
+import { ensureIngressInstance, ingressInstanceName, managedInstanceAddress } from "./lxd-ingress";
+import { parseInstance, type LxdRunner } from "./lxd-instance";
 import { mountConsumers } from "../ctl/mount";
 import { planProxyBackendEntries, findStaleExistingProxyBackendDevices } from "../terrarium-traefik-sync";
+
+test.each([
+  { clustered: false, location: "none", accepted: true },
+  { clustered: false, location: "", accepted: true },
+  { clustered: true, location: "node1", accepted: true },
+  { clustered: true, location: "", accepted: false },
+  { clustered: true, location: "node2", accepted: false }
+])("ingress helper reuse with clustered=$clustered and location=$location", async ({ clustered, location, accepted }) => {
+  const name = ingressInstanceName("node1");
+  const helper = parseInstance({
+    name, type: "container", status: "Running", location,
+    config: { "user.terrarium.role": "ingress", "user.terrarium.member": "node1" },
+    devices: { eth0: { type: "nic", network: "ovn" } }
+  });
+  const run: LxdRunner = async (args) => {
+    // An existing, running helper must be reused without any LXD mutation.
+    expect(args[1]).toBe("query");
+    const path = args.at(-1);
+    const data = path === "/1.0" ? { environment: { server_clustered: clustered, server_name: "node1" } }
+      : path === "/1.0/cluster/members/node1" ? { status: "Online" }
+      : path === "/1.0/instances?recursion=1&project=default" ? [helper]
+      : undefined;
+    expect(data).toBeDefined();
+    return { exitCode: 0, stdout: JSON.stringify(data), stderr: "" };
+  };
+  if (!accepted) {
+    await expect(ensureIngressInstance("node1", "ovn", run)).rejects.toThrow("Refusing to replace");
+    return;
+  }
+  for (let sync = 0; sync < 2; sync++) {
+    expect(await ensureIngressInstance("node1", "ovn", run)).toEqual(helper);
+  }
+  helper.config["user.terrarium.member"] = "another-owner";
+  await expect(ensureIngressInstance("node1", "ovn", run)).rejects.toThrow("Refusing to replace");
+});
 
 test("VM ingress uses the managed NIC's MAC, not Docker's first IPv4", () => {
   const instance = parseInstance({ name: "vm", type: "virtual-machine", config: { "volatile.eth0.hwaddr": "00:11:22:33:44:55" }, devices: { eth0: { type: "nic", network: "ovn" } } });
