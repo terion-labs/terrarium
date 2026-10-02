@@ -22,7 +22,7 @@ terrarium_cockpit_plugin_build_deps:
   - npm
 
 terrarium_cockpit_plugin_bundle_enabled: true
-terrarium_cockpit_plugin_bundle_repo: terion-name/terrarium
+terrarium_cockpit_plugin_bundle_repo: terion-labs/terrarium
 terrarium_cockpit_plugin_download_dir: /var/lib/terrarium/downloads/cockpit-plugins
 terrarium_cockpit_plugin_stage_dir: /var/lib/terrarium/staging/cockpit-plugins
 

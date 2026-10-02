@@ -28,7 +28,7 @@ With Terrarium, you get the freedom of a full VPS without the fear of turning yo
 
 ## 📚 Documentation
 
-- **Live Site:** [terion-name.github.io/terrarium](https://terion-name.github.io/terrarium/)
+- **Live Site:** [terrarium.terion.name](https://terrarium.terion.name/)
 - [Docs Home](docs/README.md)
 - [Getting Started](docs/getting-started/README.md)
 - [Provider Guides](docs/providers/README.md)
@@ -80,7 +80,7 @@ Want to see what you can build? Check out our guides:
 - [Protect Published Services with OIDC](docs/guides/auth-protection.md)
 
 ---
-*Ready to dive deeper? Check out the [full documentation](https://terion-name.github.io/terrarium/) to learn about storage strategies, custom domains, automated backups, and more.*
+*Ready to dive deeper? Check out the [full documentation](https://terrarium.terion.name/) to learn about storage strategies, custom domains, automated backups, and more.*
 
 ### Linux virtual machines
 

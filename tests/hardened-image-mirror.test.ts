@@ -45,13 +45,13 @@ describe("Docker Hardened Image mirror workflow", () => {
     expect(workflow).toContain("/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${PACKAGE_NAME}/visibility");
     expect(workflow).toContain(`source: dhi.io/oauth2-proxy@${OAUTH2_PROXY_DIGEST}`);
     expect(workflow).not.toContain(`source: dhi.io/oauth2-proxy:7.15.2-debian13@${OAUTH2_PROXY_DIGEST}`);
-    expect(workflow).toContain("target: ghcr.io/terion-name/terrarium-dhi-oauth2-proxy:7.15.2-debian13");
+    expect(workflow).toContain("target: ghcr.io/terion-labs/terrarium-dhi-oauth2-proxy:7.15.2-debian13");
     expect(workflow).toContain(`source_digest: ${OAUTH2_PROXY_DIGEST}`);
     expect(workflow).toContain(`target_digest: ${OAUTH2_PROXY_TARGET_DIGEST}`);
     expect(workflow).toContain(`source: dhi.io/postgres@${POSTGRES_DIGEST}`);
     expect(workflow).not.toContain("17.9-alpine3.22-fips");
-    expect(workflow).not.toContain("target: ghcr.io/terion-name/terrarium-dhi-postgres:17.9-alpine3.22");
-    expect(workflow).toContain("target: ghcr.io/terion-name/terrarium-dhi-postgres:17.10-alpine3.22");
+    expect(workflow).not.toContain("target: ghcr.io/terion-labs/terrarium-dhi-postgres:17.9-alpine3.22");
+    expect(workflow).toContain("target: ghcr.io/terion-labs/terrarium-dhi-postgres:17.10-alpine3.22");
     expect(workflow).toContain(`source_digest: ${POSTGRES_DIGEST}`);
     expect(workflow).toContain(`target_digest: ${POSTGRES_TARGET_DIGEST}`);
     expect(workflow).not.toContain("target_digest: auto");

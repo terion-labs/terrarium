@@ -32,7 +32,7 @@ const routeAuthConfig = {
 const OAUTH2_PROXY_DHI_IMAGE =
   "dhi.io/oauth2-proxy:7.15.2-debian13@sha256:8f4e89762735e7ec7c3f1bbdd5da4dcd55358db8c3278bfbc2e46a7f86ab7d9e";
 const OAUTH2_PROXY_MIRROR_IMAGE =
-  "ghcr.io/terion-name/terrarium-dhi-oauth2-proxy:7.15.2-debian13@sha256:e9e04c1aec93e395897ad62625f088bbb8230c440244a4561c76df1305f9b461";
+  "ghcr.io/terion-labs/terrarium-dhi-oauth2-proxy:7.15.2-debian13@sha256:e9e04c1aec93e395897ad62625f088bbb8230c440244a4561c76df1305f9b461";
 
 function container(name: string, proxy: string, address = "10.10.0.10") {
   return {
