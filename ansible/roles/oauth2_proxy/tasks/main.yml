@@ -54,7 +54,7 @@
       ansible.builtin.set_fact:
         terrarium_oauth2_proxy_image_effective: >-
           {{
-            terrarium_oauth2_proxy_image
+            terrarium_oauth2_proxy_image | terrarium_image_publisher
             if (terrarium_oauth2_proxy_image | default('', true) | length > 0)
             else (
               terrarium_oauth2_proxy_image_hardened

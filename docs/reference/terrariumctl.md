@@ -233,7 +233,7 @@ Use `terrariumctl update` on an existing Terrarium host when you want newer Terr
 
 ```bash
 terrariumctl update
-terrariumctl update --ref 0.0.38
+terrariumctl update --ref 0.0.39
 terrariumctl update --skip-reconfigure
 ```
 
@@ -248,10 +248,12 @@ curl -fsSL https://github.com/terion-labs/terrarium/releases/latest/download/ins
 Starting with 0.0.38, release signatures use the `terion-labs/terrarium` repository. Use the bootstrap command above when upgrading an older installation. Its existing updater can also select the new publisher explicitly:
 
 ```bash
-sudo env TERRARIUM_GITHUB_REPO=terion-labs/terrarium terrariumctl update --ref 0.0.38
+sudo env TERRARIUM_GITHUB_REPO=terion-labs/terrarium terrariumctl update --ref 0.0.39
 ```
 
 For a historical release signed under `terion-name/terrarium`, set `TERRARIUM_GITHUB_REPO=terion-name/terrarium` explicitly when selecting that older version.
+
+Starting with 0.0.39, reconciliation also migrates saved Terrarium oauth2-proxy and Postgres mirror references to `ghcr.io/terion-labs/`, preserving their tags and digests. Custom image references remain unchanged. DNS-01 provider settings and credentials now survive updates and reconfiguration. If an earlier run already removed those settings, restore them with `terrariumctl set dns provider` before retrying routes that need wildcard certificates.
 
 ## proxy labels
 

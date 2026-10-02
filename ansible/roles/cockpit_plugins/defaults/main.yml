@@ -30,11 +30,11 @@ terrarium_cockpit_zfs_repo: https://github.com/45Drives/cockpit-zfs.git
 terrarium_cockpit_zfs_ref: v1.2.21-3
 terrarium_cockpit_zfs_commit: fa79a92adc73199645a16dce6cba0cf47819610f
 terrarium_cockpit_zfs_bundle_sha256:
-  amd64: f422e117c408ddbfcadb98af74a534a727bec081e0095ec31bd8198f2bd6e875
-  arm64: e450efc4a81886569fc8f85366114954a877064c8aa6d733bf12742fb16b6eca
+  amd64: 5ebdeb7d0cd95013c15b96cd66363747191f5202192e69caf693ee6ad7727afd
+  arm64: 59c08915710007df450a45a3509f61e76d6e92c0db9a77c3847c9006efb2cf43
 terrarium_cockpit_s3_repo: https://github.com/45Drives/cockpit-S3ObjectBroswer.git
 terrarium_cockpit_s3_ref: v1.1.0-6
 terrarium_cockpit_s3_commit: 62dccc3cd1954530ce4144d0d4d0a20616456107
 terrarium_cockpit_s3_bundle_sha256:
-  amd64: c817ef61b4bd66f700078c6a1d902ed0552634105bff458761413a0cfd3fc07c
-  arm64: cc7fcf3b463dd9efa7e92a0a1e71c8905d82f06c2d7e6d7e5a6f44370e7d4292
+  amd64: ec007c64e56efbca7d4ad5353c9b4d6d8db326952f90f235bd0a9926936a8600
+  arm64: 2b86fa2d989b5ed7e1eef0a9d958a43170043339440e1ebe740e671f7a8c1a7f

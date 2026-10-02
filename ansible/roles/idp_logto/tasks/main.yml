@@ -156,7 +156,7 @@
       ansible.builtin.set_fact:
         terrarium_logto_postgres_image_effective: >-
           {{
-            terrarium_logto_postgres_image
+            terrarium_logto_postgres_image | terrarium_image_publisher
             if (terrarium_logto_postgres_image | default('', true) | length > 0)
             else (
               terrarium_logto_postgres_image_hardened

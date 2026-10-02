@@ -4,6 +4,7 @@ bun.lockb
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 ansible/.ansible/
+__pycache__/
 tests/integration/output/
 tests/integration/.env
 .DS_Store

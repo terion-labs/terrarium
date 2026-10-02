@@ -182,7 +182,7 @@
       ansible.builtin.set_fact:
         terrarium_zitadel_postgres_image_effective: >-
           {{
-            terrarium_zitadel_postgres_image
+            terrarium_zitadel_postgres_image | terrarium_image_publisher
             if (terrarium_zitadel_postgres_image | default('', true) | length > 0)
             else (
               terrarium_zitadel_postgres_image_hardened

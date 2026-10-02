@@ -92,6 +92,8 @@
     terrarium_logto_postgres_image_fallback: "postgres:17.9-alpine3.22@sha256:034839bd88128360cda25496ebdb1471e24a4aa09b937160c73df2bb51126308"
     terrarium_email: ""
     terrarium_acme_email: "{{ terrarium_email }}"
+    terrarium_acme_dns_provider: ""
+    terrarium_acme_dns_env: {}
     terrarium_enable_s3: false
     terrarium_s3_endpoint: https://s3.amazonaws.com
     terrarium_s3_bucket: ""
@@ -153,6 +155,8 @@
       terrarium_logto_app_image: "{{ terrarium_logto_app_image_effective | default(terrarium_logto_app_image_fallback) }}"
       terrarium_logto_postgres_image: "{{ terrarium_logto_postgres_image_effective | default(terrarium_logto_postgres_image_fallback) }}"
       terrarium_local_idp_discovery_url: "{{ terrarium_local_idp_discovery_url_effective | default('') }}"
+      terrarium_acme_dns_provider: "{{ terrarium_acme_dns_provider }}"
+      terrarium_acme_dns_env: "{{ terrarium_acme_dns_env }}"
       terrarium_lxd_pool_name: "{{ terrarium_lxd_pool_name }}"
       terrarium_cluster_enabled: "{{ terrarium_cluster_enabled }}"
       terrarium_cluster_peer_cidrs: "{{ terrarium_cluster_peer_cidrs }}"
@@ -297,7 +301,7 @@
           }}
         terrarium_oauth2_proxy_image_effective: >-
           {{
-            terrarium_oauth2_proxy_image
+            terrarium_oauth2_proxy_image | terrarium_image_publisher
             if (terrarium_oauth2_proxy_image | default('', true) | length > 0)
             else (
               terrarium_oauth2_proxy_image_hardened
@@ -311,7 +315,7 @@
           }}
         terrarium_zitadel_postgres_image_effective: >-
           {{
-            terrarium_zitadel_postgres_image
+            terrarium_zitadel_postgres_image | terrarium_image_publisher
             if (terrarium_zitadel_postgres_image | default('', true) | length > 0)
             else (
               terrarium_zitadel_postgres_image_hardened
@@ -331,7 +335,7 @@
           }}
         terrarium_logto_postgres_image_effective: >-
           {{
-            terrarium_logto_postgres_image
+            terrarium_logto_postgres_image | terrarium_image_publisher
             if (terrarium_logto_postgres_image | default('', true) | length > 0)
             else (
               terrarium_logto_postgres_image_hardened

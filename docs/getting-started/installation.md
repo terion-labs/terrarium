@@ -36,7 +36,7 @@ The published `install.sh` is intentionally thin. It downloads the matching rele
 If you want to pin a specific release instead of `latest`, use the tagged asset directly:
 
 ```bash
-curl -fsSL https://github.com/terion-labs/terrarium/releases/download/0.0.38/install.sh | bash
+curl -fsSL https://github.com/terion-labs/terrarium/releases/download/0.0.39/install.sh | bash
 ```
 
 ## Install Modes
