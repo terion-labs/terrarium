@@ -68,6 +68,11 @@ jobs:
           bash -n install.sh
           test -x dist/terrariumctl
           bun run tests/integration/index.ts --help
+          bun run integration:vm --help
+      - name: Typecheck and unit tests
+        run: |
+          bun run typecheck
+          bun test
       - name: Ansible syntax
         run: |
           cd ansible

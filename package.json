@@ -11,7 +11,8 @@
     "docs:preview": "vitepress preview docs",
     "integration": "bun run tests/integration/index.ts",
     "integration:smoke": "bun run tests/integration/index.ts --suite smoke",
-    "integration:full": "bun run tests/integration/index.ts --suite full"
+    "integration:full": "bun run tests/integration/index.ts --suite full",
+    "integration:vm": "bun run tests/integration/vm/index.ts"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.8.4",

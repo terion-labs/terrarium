@@ -1,4 +1,4 @@
-terrarium_sanoid_recursion_root: "{{ terrarium_lxd_pool_name }}/containers"
+terrarium_sanoid_recursion_root: "{{ terrarium_backup_zfs_root }}/containers"
 terrarium_awscli_version: "2.34.41"
 terrarium_awscli_download_dir: /var/lib/terrarium/downloads/awscli
 terrarium_awscli_stage_dir: /var/lib/terrarium/staging/awscli

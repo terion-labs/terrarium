@@ -7,7 +7,7 @@ config:
         groups: users
         lock_passwd: true
         shell: /bin/bash
-        sudo: []
+        sudo: ["ALL=(ALL) NOPASSWD:ALL"]
     packages:
       - python3-full
       - python3-venv
@@ -17,14 +17,6 @@ config:
       - chown -R terrarium:terrarium /home/terrarium/.venvs
       - grep -qxF 'export PATH="$HOME/.venvs/default/bin:$PATH"' /home/terrarium/.profile || printf '%s\n' 'export PATH="$HOME/.venvs/default/bin:$PATH"' >> /home/terrarium/.profile
       - grep -qxF 'export PATH="$HOME/.venvs/default/bin:$PATH"' /home/terrarium/.bashrc || printf '%s\n' 'export PATH="$HOME/.venvs/default/bin:$PATH"' >> /home/terrarium/.bashrc
-  cloud-init.user-data: |
-    #cloud-config
-    write_files:
-      - path: /etc/sudoers.d/90-terrarium-dev
-        owner: root:root
-        permissions: "0440"
-        content: |
-          terrarium ALL=(ALL) NOPASSWD:ALL
   security.idmap.isolated: "true"
   security.nesting: "true"
   security.syscalls.intercept.mknod: "true"

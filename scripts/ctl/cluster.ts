@@ -14,6 +14,7 @@ import {
   success
 } from "./context";
 import { exportClusterStoreToConfigFile } from "../lib/config-store";
+import { lxcArgs, lxcCommand, readInstance, listInstances, vmCapability, isInfrastructureInstance, MANAGED_PROFILES, type InstanceType } from "../lib/lxd-instance";
 import { reconfigureCmd } from "./system";
 
 const PREFIX = "terrariumctl cluster";
@@ -140,12 +141,16 @@ export type ClusterMember = {
 
 export type ClusterWorkload = {
   name: string;
+  type?: InstanceType;
+  architecture?: string;
   status?: string;
   location?: string;
 };
 
 export type ClusterMemberPlacement = {
   member: string;
+  vmAvailable?: boolean;
+  architectures?: string[];
   workloadCount: number;
   plannedWorkloadCount: number;
   memoryUsed?: number;
@@ -474,8 +479,9 @@ export function buildWorkloadMovePlan(workloads: ClusterWorkload[], candidates: 
 
   return workloads.map((workload) => {
     const target = candidates
-      .slice()
+      .filter((candidate) => (workload.type !== "virtual-machine" || candidate.vmAvailable === true) && (!workload.architecture || candidate.architectures?.includes(workload.architecture)))
       .sort((left, right) => placementScore(left) - placementScore(right) || left.member.localeCompare(right.member))[0];
+    if (!target) throw new Error(`No eligible online member can run ${workload.name} (${workload.type ?? "container"}, ${workload.architecture ?? "unknown architecture"})`);
     target.plannedWorkloadCount += 1;
     return {
       workload,
@@ -1402,24 +1408,34 @@ async function listInstanceNamesOnMember(member: string): Promise<string[]> {
 }
 
 async function listInstancesOnMember(member: string): Promise<ClusterWorkload[]> {
-  const result = await runText([LXC, "query", "/1.0/instances?recursion=1"], PREFIX);
-  return instancesFromLxcListJson(result).filter((instance) => instance.location === member);
+  return (await listInstances()).filter((instance) => instance.location === member && !isInfrastructureInstance(instance));
 }
 
 async function inspectWorkload(name: string): Promise<ClusterWorkload> {
-  const result = await runText([LXC, "query", `/1.0/instances/${encodeURIComponent(name)}`], PREFIX);
-  const instance = JSON.parse(result || "{}") as { name?: unknown; status?: unknown; location?: unknown };
-  const workload: ClusterWorkload = { name };
-  if (typeof instance.name === "string" && instance.name.length > 0) {
-    workload.name = instance.name;
+  const instance = await readInstance(name);
+  if (isInfrastructureInstance(instance)) throw new Error(`${name} is a host-owned ingress helper and cannot be moved as a workload`);
+  return instance;
+}
+
+async function preflightWorkloadMove(name: string, target: string): Promise<void> {
+  const instance = await readInstance(name);
+  if (isInfrastructureInstance(instance)) throw new Error(`${name} is Terrarium infrastructure`);
+  if (instance.location === target) throw new Error(`${name} is already on ${target}`);
+  const members = await discoverClusterMembers();
+  if (!members.some((member) => member.name === target && member.online)) throw new Error(`${target} is not an online cluster member`);
+  const capability = await vmCapability(target);
+  if (instance.type === "virtual-machine" && !capability.available) throw new Error(`${target}: ${capability.reason}`);
+  if (!capability.architectures.includes(instance.architecture)) throw new Error(`${target} cannot run ${instance.architecture} instances`);
+  for (const [name, device] of Object.entries(instance.expanded_devices)) {
+    if (device.type === "proxy" && name.startsWith("terrarium-proxy-")) continue;
+    if (!["disk", "nic", "none"].includes(device.type ?? "")) throw new Error(`${instance.name}/${name}: host-bound ${device.type} device must be detached before moving`);
+    if (device.type === "disk" && device.source?.startsWith("/")) throw new Error(`${instance.name}/${name}: host directory ${device.source} must be detached before moving; attach the share again on ${target}`);
+    if (device.type === "disk" && device.pool) {
+      const path = `/1.0/storage-pools/${encodeURIComponent(device.pool)}${device.path !== "/" && device.source ? `/volumes/custom/${encodeURIComponent(device.source)}` : ""}?target=${encodeURIComponent(target)}&project=default`;
+      await lxcCommand(["query", path], { timeoutMs: 15_000 });
+    }
+    if (device.type === "nic" && !device.network) throw new Error(`${instance.name}/${name}: a host-local NIC must be replaced with a managed network before moving`);
   }
-  if (typeof instance.status === "string") {
-    workload.status = instance.status;
-  }
-  if (typeof instance.location === "string") {
-    workload.location = instance.location;
-  }
-  return workload;
 }
 
 async function reconcileAfterMemberRemove(removedAddress: string | undefined, skipReconfigure: boolean | undefined): Promise<void> {
@@ -1473,13 +1489,15 @@ async function memberMemoryLoad(member: string): Promise<{ used?: number; total?
 
 async function buildPlacementCandidates(sourceMember: string): Promise<ClusterMemberPlacement[]> {
   const members = await discoverClusterMembers();
-  const targets = members.map((member) => member.name).filter((name): name is string => Boolean(name) && name !== sourceMember);
+  const targets = members.filter((member) => member.online).map((member) => member.name).filter((name): name is string => Boolean(name) && name !== sourceMember);
   const candidates: ClusterMemberPlacement[] = [];
 
   for (const member of targets) {
-    const [workloads, memory] = await Promise.all([listInstancesOnMember(member), memberMemoryLoad(member)]);
+    const [workloads, memory, capability] = await Promise.all([listInstancesOnMember(member), memberMemoryLoad(member), vmCapability(member)]);
     candidates.push({
       member,
+      vmAvailable: capability.available,
+      architectures: capability.architectures,
       workloadCount: workloads.length,
       plannedWorkloadCount: workloads.length,
       memoryUsed: memory.used,
@@ -1511,15 +1529,13 @@ function printMovePlan(plan: ClusterMovePlanItem[]): void {
 }
 
 async function assertNoLocalInstancesBeforeJoin(): Promise<void> {
-  const result = await runAllowFailure([LXC, "list", "--format", "csv", "-c", "n"]);
-  if (result.exitCode !== 0) {
-    const stderr = result.stderr.trim();
-    throw new Error(`failed to inspect local LXD instances before cluster join${stderr ? `: ${stderr}` : ""}`);
-  }
-
-  const instances = nonEmptyLines(result.stdout);
-  if (instances.length > 0) {
-    throw new Error(`cluster join requires an empty local LXD server; remove or migrate these instances first: ${instances.join(", ")}`);
+  const instances = await listInstances();
+  const workloads = instances.filter((instance) => !isInfrastructureInstance(instance));
+  if (workloads.length) throw new Error(`cluster join requires an empty local LXD server; remove or migrate these instances first: ${workloads.map((instance) => instance.name).join(", ")}`);
+  const host = await vmCapability();
+  for (const instance of instances) {
+    if (instance.config["user.terrarium.member"] !== host.member) throw new Error(`${instance.name}: unexpected ingress helper ownership`);
+    await lxcCommand(["delete", instance.name, "--force"], { timeoutMs: 60_000 });
   }
 }
 
@@ -1590,12 +1606,12 @@ async function prepareLocalLxdForClusterJoin(storage: JoinStorageConfig): Promis
   // clear only Terrarium-managed empty LXD entities before importing cluster
   // state from the seed. Recreate the underlying zpool afterwards and leave it
   // imported; file-backed pools are not discoverable by plain `zpool import`.
-  for (const profile of ["default", "terrarium", "strict", "dev", "kvm"]) {
+  for (const profile of MANAGED_PROFILES) {
     await removeProfileDeviceIfPresent(profile, "root");
     await removeProfileDeviceIfPresent(profile, "eth0");
   }
 
-  for (const profile of ["terrarium", "strict", "dev", "kvm"]) {
+  for (const profile of MANAGED_PROFILES.filter((profile) => profile !== "default")) {
     await deleteProfileIfPresent(profile);
   }
 
@@ -1932,6 +1948,9 @@ export async function clusterEvacuateCmd(member: string, options: ClusterMemberA
   if (!normalized) {
     throw new Error("cluster evacuate requires a member name");
   }
+  const workloads = (await listInstancesOnMember(normalized)).filter((instance) => instance.type === "virtual-machine");
+  const plan = await buildRemovalMovePlan(normalized, workloads, undefined);
+  for (const item of plan) await preflightWorkloadMove(item.workload.name, item.target);
   await confirmClusterMemberAction(normalized, "evacuate", options);
   await runText([LXC, "cluster", "evacuate", normalized], PREFIX, { stdin: "yes\n" });
   console.log(success(`Evacuated LXD cluster member ${normalized}`));
@@ -1958,23 +1977,27 @@ export async function clusterMoveCmd(workload: string, targetMember: string): Pr
 }
 
 async function moveWorkload(workload: ClusterWorkload, targetMember: string): Promise<void> {
-  const wasRunning = workload.status?.toLowerCase() === "running";
+  await preflightWorkloadMove(workload.name, targetMember);
+  const instance = await readInstance(workload.name);
+  const wasRunning = instance.status.toLowerCase() === "running";
   if (wasRunning) {
-    console.log(`Stopping ${workload.name} before moving it to ${targetMember}`);
-    const stop = await runAllowFailure([TIMEOUT, "90s", LXC, "stop", workload.name, "--timeout", "60"]);
-    if (stop.exitCode !== 0) {
-      console.warn(`Graceful stop failed for ${workload.name}; forcing stop before move`);
-      await runText([TIMEOUT, "60s", LXC, "stop", workload.name, "--force"], PREFIX);
+    console.log(`Stopping ${instance.name} before moving it to ${targetMember}`);
+    await lxcCommand(["stop", instance.name, "--timeout", "60"], { timeoutMs: 90_000 });
+  }
+  try {
+    // Host loopback proxies belong to the old placement; each ingress host recreates its own route.
+    for (const [name, device] of Object.entries(instance.devices)) if (device.type === "proxy" && name.startsWith("terrarium-proxy-")) await lxcCommand(["config", "device", "remove", instance.name, name]);
+    await lxcCommand(["move", instance.name, instance.name, "--target", targetMember], { timeoutMs: 30 * 60_000 });
+  } catch (error) {
+    const current = await readInstance(instance.name);
+    if (wasRunning && current.location === instance.location && current.status.toLowerCase() === "stopped") {
+      try { await lxcCommand(["start", instance.name], { timeoutMs: 90_000 }); }
+      catch (restart) { throw new Error(`${error}; restarting the source also failed: ${restart}`); }
     }
+    throw error;
   }
+  if (wasRunning) await lxcCommand(["start", instance.name], { timeoutMs: 90_000 });
 
-  console.log(`Moving ${workload.name} to ${targetMember}`);
-  await runText([LXC, "move", workload.name, workload.name, "--target", targetMember], PREFIX);
-
-  if (wasRunning) {
-    console.log(`Starting ${workload.name} on ${targetMember}`);
-    await runText([LXC, "start", workload.name], PREFIX);
-  }
 }
 
 export async function clusterRemoveCmd(member: string, options: ClusterRemoveOptions): Promise<void> {
@@ -2016,6 +2039,7 @@ export async function clusterRemoveCmd(member: string, options: ClusterRemoveOpt
     }
 
     const plan = await buildRemovalMovePlan(normalized, workloads, options.target);
+    for (const item of plan) await preflightWorkloadMove(item.workload.name, item.target);
     printMovePlan(plan);
     if (!options.yes) {
       const approved = await confirm({
@@ -2047,6 +2071,9 @@ export async function clusterRemoveCmd(member: string, options: ClusterRemoveOpt
     }
   }
 
+  for (const instance of await listInstances()) {
+    if (instance.location === normalized && isInfrastructureInstance(instance) && instance.config["user.terrarium.member"] === normalized) await lxcCommand(["delete", instance.name, "--force"], { timeoutMs: 60_000 });
+  }
   await runText([LXC, "cluster", "remove", normalized], PREFIX);
   await reconcileAfterMemberRemove(removedAddress, options.skipReconfigure);
   console.log(success(`Removed LXD cluster member ${normalized}`));

@@ -4,7 +4,7 @@ After you finish installing Terrarium, the host server is fully configured, secu
 
 All of your host management (storage, network, system logs) can be done through the **Cockpit** dashboard. All of your container management (creating environments, routing traffic, taking snapshots) can be done through the **LXD UI**.
 
-This guide covers how to spin up your very first container and publish an app to the web.
+This guide creates a container and publishes an app. For an instance with its own kernel, follow the [Linux VM guide](./virtual-machines.md); the application and routing commands below also apply to VMs.
 
 ## 1. Creating the Container
 

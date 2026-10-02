@@ -30,3 +30,7 @@ If you plan to link multiple Terrarium servers together into a cluster:
 - **Let Terrarium Handle the Mesh:** Terrarium uses WireGuard to securely connect your servers. You only need to allow WireGuard traffic (`51820/udp`) through your provider's firewall between the specific IP addresses of your servers. Terrarium handles all the complex container networking inside that secure tunnel.
 
 *Ready to cluster? Check out the [Clustering Guide](../operations/clustering) once your servers are up.*
+
+## Running LXD virtual machines
+
+Check virtualization on the selected server with `trm status` before planning VM workloads. Cloud guests need nested KVM; bare-metal hosts need hardware virtualization enabled. Provider plans can differ. Containers continue to work on hosts without VM support. See [VM host requirements](../getting-started/virtual-machines.md).

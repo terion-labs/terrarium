@@ -753,3 +753,11 @@ S3 verification notes:
 | `--syncoid-target` | host | required when syncoid is enabled | existing configured value | Updates the remote syncoid SSH target. |
 | `--syncoid-target-dataset` | dataset | required when syncoid is enabled | existing configured value | Updates the remote syncoid dataset. |
 | `--syncoid-ssh-key` | path | no | existing configured value or `/root/.ssh/id_ed25519` | Updates the SSH key used by syncoid. |
+
+## Linux VM options
+
+`launch` and `image launch` share `--vm`, `--target MEMBER`, `--wait`, and `--timeout SECONDS` (default 300), as well as all existing resource and provisioning options. Explicit VM launches and local golden VM images choose `vm` unless a profile is supplied. `vm-dev` adds passwordless sudo. VM commands discover existing instance types from LXD, so `exec`, image creation, mounts, backups, and cluster movement need no extra type flag.
+
+Use `--instance` and `--instance-path` for mount commands. The historical `--container` and `--container-path` spellings remain aliases and cannot conflict. `backup replicate` runs the configured Syncoid complete-set export now. `backup list` includes both local dataset types and versioned S3 backup IDs; pass a full ID to `--at` when an old name has multiple backup identities.
+
+`status` reports local VM capability, workload counts, ingress helper state, and last backup service results. See the [VM guide](../getting-started/virtual-machines.md) for UI creation, readiness diagnostics, routing, sharing, and recovery.

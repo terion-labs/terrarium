@@ -388,6 +388,17 @@ describe("terrarium route auth generation", () => {
     }
   });
 
+  test("keeps VM helper backends behind the same group authentication policy", () => {
+    const instance = { ...container("vm-app", "https://app.example.test:8080/admin@auth:admins"), type: "virtual-machine" as const };
+    const result = buildDynamicConfig([instance], routeAuthConfig, { "vm-app:tcp:8080": { address: "127.0.0.1", port: 18090 } });
+    expect(result.errors).toEqual([]);
+    expect(result.authProfiles[0]?.groups).toEqual(["admins"]);
+    const dynamic = parse(result.dynamicYaml);
+    const protectedRouter = Object.values(dynamic.http.routers).find((router: any) => router.rule.includes("PathPrefix(`/admin`)") && router.middlewares?.includes(result.authProfiles[0]!.middlewareName)) as any;
+    expect(protectedRouter).toBeDefined();
+    expect(dynamic.http.services[protectedRouter.service].loadBalancer.servers).toEqual([{ url: "http://127.0.0.1:18090" }]);
+  });
+
   test("renders wildcard HTTPS routes with HostRegexp and wildcard ACME domains", () => {
     const { dynamicYaml, errors } = buildDynamicConfig(
       [container("app", "https://*.example.test:8080")],

@@ -1,0 +1,48 @@
+config:
+  limits.cpu: "2"
+  limits.memory: 2GiB
+  cloud-init.vendor-data: |
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="terrarium-vendor"
+
+    --terrarium-vendor
+    Content-Type: text/cloud-config; charset="us-ascii"
+
+    #cloud-config
+    users:
+      - name: terrarium
+        gecos: Terrarium User
+        groups: users
+        lock_passwd: true
+        shell: /bin/bash
+        sudo: []
+    packages:
+      - python3-full
+      - python3-venv
+
+    --terrarium-vendor
+    Content-Type: text/x-shellscript; charset="us-ascii"
+
+    #!/bin/sh
+    set -eu
+    if ! dpkg-query -W -f='${Status}' python3-venv 2>/dev/null | grep -q 'install ok installed'; then
+      apt-get update -qq
+      DEBIAN_FRONTEND=noninteractive apt-get install -y python3-full python3-venv
+    fi
+    mkdir -p /home/terrarium/.venvs
+    test -x /home/terrarium/.venvs/default/bin/python || python3 -m venv /home/terrarium/.venvs/default
+    chown -R terrarium:terrarium /home/terrarium/.venvs
+    grep -qxF 'export PATH="$HOME/.venvs/default/bin:$PATH"' /home/terrarium/.profile || printf '%s\n' 'export PATH="$HOME/.venvs/default/bin:$PATH"' >> /home/terrarium/.profile
+    grep -qxF 'export PATH="$HOME/.venvs/default/bin:$PATH"' /home/terrarium/.bashrc || printf '%s\n' 'export PATH="$HOME/.venvs/default/bin:$PATH"' >> /home/terrarium/.bashrc
+    --terrarium-vendor--
+description: Terrarium Linux virtual machine
+devices:
+  eth0:
+    network: {{ terrarium_lxd_network_name }}
+    type: nic
+  root:
+    path: /
+    size: 20GiB
+    pool: {{ terrarium_lxd_pool_name }}
+    type: disk
+name: vm

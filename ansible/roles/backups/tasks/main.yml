@@ -141,6 +141,28 @@
     - "{{ terrarium_state_dir }}/lastsnapshots"
     - "{{ terrarium_state_dir }}/restore"
 
+- name: Inspect local LXD member identity for backup storage
+  ansible.builtin.command:
+    argv: [/snap/bin/lxc, query, /1.0]
+  register: terrarium_backup_server
+  changed_when: false
+
+- name: Discover the local physical ZFS storage root
+  ansible.builtin.command:
+    argv: "{{ ['/snap/bin/lxc', 'storage', 'get', terrarium_lxd_pool_name, 'zfs.pool_name'] + (['--target', (terrarium_backup_server.stdout | from_json).environment.server_name] if (terrarium_backup_server.stdout | from_json).environment.server_clustered else []) }}"
+  register: terrarium_backup_pool
+  changed_when: false
+
+- name: Record physical ZFS root independently of LXD pool label
+  ansible.builtin.set_fact:
+    terrarium_backup_zfs_root: "{{ terrarium_backup_pool.stdout | trim }}"
+
+- name: Validate physical ZFS root
+  ansible.builtin.assert:
+    that:
+      - terrarium_backup_zfs_root | length > 0
+    fail_msg: LXD did not report zfs.pool_name for the local backup pool
+
 - name: Render sanoid config
   ansible.builtin.template:
     src: sanoid.conf.j2

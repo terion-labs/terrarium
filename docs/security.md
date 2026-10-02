@@ -80,3 +80,9 @@ Terrarium provides an incredibly secure foundation, but it isn't magic. You stil
 - Use Terrarium's built-in OIDC protection for sensitive internal dashboards.
 
 **The Golden Rule:** Treat containers as private first. If a service doesn't *need* to be on the internet, don't publish it. 
+
+## Linux virtual machines
+
+VMs use the same private OVN network and explicit `user.proxy` publication as containers. They run a separate guest kernel and require working KVM on the host. The base `vm` profile creates a locked `terrarium` account without passwordless sudo; `vm-dev` grants it for development workloads.
+
+VM ingress uses per-member helper containers with host loopback listeners. Apps must listen on the VM’s private address or `0.0.0.0`. HTTP authentication rules are unchanged; TCP and UDP publication does not add browser authentication. For golden images and restore-as-new, Terrarium blocks guest network traffic while replacing copied machine and SSH identities, then removes the temporary block after clean shutdown.

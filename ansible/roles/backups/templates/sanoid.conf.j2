@@ -3,6 +3,13 @@
         recursive = yes
         process_children_only = yes
 
+# A VM's metadata filesystem and block volume are siblings. One recursive ZFS
+# snapshot command gives every component the same transaction group.
+[{{ terrarium_backup_zfs_root }}/virtual-machines]
+        use_template = terrarium
+        recursive = zfs
+        process_children_only = no
+
 [template_terrarium]
         frequently = 4
         hourly = 24

@@ -1,4 +1,4 @@
-import { cac } from "cac";
+import { cac, type Command } from "cac";
 import chalk from "chalk";
 import { registerInstallCommand } from "./terrarium-install";
 import { proxySyncCmd as syncProxyConfig } from "./terrarium-traefik-sync";
@@ -81,12 +81,12 @@ cli.command("status", "Show Terrarium service and endpoint status").action(async
 });
 
 cli
-  .command("backup <action>", "Backup operations: list, export, restore")
+  .command("backup <action>", "Backup operations: list, export, replicate, restore")
   .option("--source <source>", "Restore source: local or s3")
   .option("--instance <name>", "Instance name")
   .option("--at <snapshotOrTimestamp>", "Snapshot name fragment or timestamp")
   .option("--as-new <name>", "Restore as a new instance")
-  .usage("backup list | backup export | backup restore [--source local|s3] --instance NAME [--at SNAPSHOT|TIMESTAMP] [--as-new NEWNAME]")
+  .usage("backup list | backup export | backup replicate | backup restore [--source local|s3] --instance NAME [--at SNAPSHOT|TIMESTAMP] [--as-new NEWNAME]")
   .action(async (action, options) => {
     await backupActionCmd(action, {
       source: options.source as string | undefined,
@@ -140,8 +140,13 @@ cli
     process.stdout.write(completionScript(shell as CompletionShell));
   });
 
-cli
-  .command("launch <image> <name>", "Launch an LXD container with Terrarium provisioning shortcuts")
+/** Both entry points expose the same provisioning and instance options. */
+function withLaunchOptions(command: Command): Command {
+  return command
+  .option("--vm", "Create an LXD virtual machine")
+  .option("--target <member>", "Cluster member for the new instance", STRING_OPTION)
+  .option("--wait", "Wait for the guest agent and cloud-init to finish")
+  .option("--timeout <seconds>", "Readiness timeout in seconds, default 300", STRING_OPTION)
   .option("--profile <profile>", "LXD profile to apply; can be repeated", STRING_OPTION)
   .option("--disk <size>", "Root disk size, for example 40G", STRING_OPTION)
   .option("--memory <size>", "Memory limit, for example 4G", STRING_OPTION)
@@ -153,24 +158,21 @@ cli
   .option("--var <keyValue>", "Launch variable KEY=value; exported to provisioning commands, Ansible, and Compose; can be repeated", STRING_OPTION)
   .option("--vars <path>", "Dotenv file with launch variables; can be repeated", STRING_OPTION)
   .option("--cloud-init <path>", "Raw cloud-init user-data file; cannot be combined with provisioning shortcuts", STRING_OPTION)
-  .option("--proxy <route>", "Set the Terrarium user.proxy label; can be repeated", STRING_OPTION)
+  .option("--proxy <route>", "Set the Terrarium user.proxy label; can be repeated", STRING_OPTION);
+}
+
+withLaunchOptions(cli.command("launch <image> <name>", "Launch an LXD container or VM with Terrarium provisioning"))
   .usage(
-    "launch IMAGE NAME [--profile PROFILE] [--disk 40G] [--memory 4G] [--cpu 2]\n  terrariumctl launch ubuntu:24.04 web-01 --playbook ./site.yml\n  terrariumctl launch ubuntu:24.04 app-01 --docker-compose ./docker-compose.yml --proxy https://app.example.com:8080"
+    "launch IMAGE NAME [--vm] [--target MEMBER] [--wait] [--timeout SECONDS] [--profile PROFILE] [--disk 40G] [--memory 4G] [--cpu 2]\n  terrariumctl launch ubuntu:24.04 web-01 --playbook ./site.yml\n  terrariumctl launch ubuntu:24.04 app-01 --docker-compose ./docker-compose.yml --proxy https://app.example.com:8080"
   )
   .action(async (image, name, options) => {
     await launchCmd(image as string, name as string, launchOptionsFromCli(options as Record<string, unknown>));
   });
 
-cli
-  .command("image <action> [...args]", "Golden image operations: create, list, launch, delete")
+withLaunchOptions(cli.command("image <action> [...args]", "Golden image operations: create, list, launch, delete"))
   .option("--snapshot <name>", "Publish an existing instance snapshot", STRING_OPTION)
-  .option("--live", "Publish the current instance state without creating a temporary snapshot")
+  .option("--live", "Publish current disk state without creating a temporary snapshot")
   .option("--reuse", "Replace an existing image alias when creating")
-  .option("--profile <profile>", "LXD profile for image launch; can be repeated", STRING_OPTION)
-  .option("--disk <size>", "Root disk size for image launch, for example 40G", STRING_OPTION)
-  .option("--memory <size>", "Memory limit for image launch, for example 4G", STRING_OPTION)
-  .option("--cpu <count>", "CPU limit for image launch", STRING_OPTION)
-  .option("--proxy <route>", "Set the Terrarium user.proxy label on image launch; can be repeated", STRING_OPTION)
   .usage(
     "image create INSTANCE ALIAS [--snapshot SNAPSHOT|--live] [--reuse]\n  terrariumctl image list\n  terrariumctl image launch ALIAS NAME [--profile dev] [--proxy https://app.example.com:8080]\n  terrariumctl image delete ALIAS"
   )
@@ -219,11 +221,11 @@ cli
   });
 
 cli
-  .command("exec <instance> [...command]", "Run a command or shell inside a Terrarium container as the terrarium user")
-  .option("--root", "Run as root inside the container")
-  .option("--user <user>", "Container user for the command", STRING_OPTION)
+  .command("exec <instance> [...command]", "Run a command or shell inside a Terrarium instance as the terrarium user")
+  .option("--root", "Run as root inside the instance")
+  .option("--user <user>", "Guest user for the command", STRING_OPTION)
   .allowUnknownOptions()
-  .usage("exec CONTAINER [-- COMMAND...]\n  terrariumctl exec CONTAINER\n  terrariumctl exec CONTAINER -- bash -lc 'echo hello'\n  terrariumctl exec CONTAINER --root")
+  .usage("exec INSTANCE [-- COMMAND...]\n  terrariumctl exec INSTANCE\n  terrariumctl exec INSTANCE -- bash -lc 'echo hello'\n  terrariumctl exec INSTANCE --root")
   .action(async (instance, command, options) => {
     const rawOptions = options as Record<string, unknown>;
     const passthrough = Array.isArray(rawOptions["--"]) ? (rawOptions["--"] as string[]) : [];
@@ -375,6 +377,13 @@ cli
     await syncProxyConfig();
   });
 
+function mountAlias(options: Record<string, unknown>, current: string, legacy: string, currentFlag = current, legacyFlag = legacy): string | undefined {
+  const preferred = cliOption(options, current, [currentFlag]);
+  const old = cliOption(options, legacy, [legacyFlag]);
+  if (preferred && old && preferred !== old) throw new Error(`Conflicting --${currentFlag} and --${legacyFlag} values`);
+  return preferred ?? old;
+}
+
 cli
   .command("mount <action> [...args]", "Manage host SMB/CIFS mounts")
   .option("-p, --password <password>", "SMB/CIFS password for non-interactive automation", STRING_OPTION)
@@ -385,11 +394,12 @@ cli
   .option("--dir-mode <mode>", "Directory mode for mounted directories", { ...STRING_OPTION, default: DEFAULT_CIFS_DIR_MODE })
   .option("--seal <value>", "Enable SMB encryption: true or false", { ...STRING_OPTION, default: "true" })
   .option("--container <name>", "Attach the mount to an LXD container with container-aware ownership", STRING_OPTION)
-  .option("--instance <name>", "Alias for --container", STRING_OPTION)
+  .option("--instance <name>", "Attach to an LXD instance with matching ownership", STRING_OPTION)
+  .option("--instance-path <path>", "Path inside the instance", STRING_OPTION)
   .option("--container-path <path>", "Path inside the attached LXD container", STRING_OPTION)
-  .option("--device <name>", "LXD disk device name for --container or mount attach", STRING_OPTION)
+  .option("--device <name>", "LXD disk device name for --instance or mount attach", STRING_OPTION)
   .usage(
-    "mount add smb|cifs /host/path //server/share username [-p PASSWORD|--password-file PATH] [--container NAME]\n  terrariumctl mount attach /host/path CONTAINER [/container/path]\n  terrariumctl mount remove /host/path\n  terrariumctl mount list"
+    "mount add smb|cifs /host/path //server/share username [-p PASSWORD|--password-file PATH] [--instance NAME]\n  terrariumctl mount attach /host/path INSTANCE [/instance/path]\n  terrariumctl mount remove /host/path\n  terrariumctl mount list"
   )
   .action(async (action, args, options) => {
     const normalizedAction = action.trim().toLowerCase();
@@ -408,8 +418,8 @@ cli
         fileMode: cliOption(rawOptions, "fileMode", ["file-mode"]),
         dirMode: cliOption(rawOptions, "dirMode", ["dir-mode"]),
         seal: parseBooleanOption(rawOptions.seal as string | undefined, "--seal", true),
-        instance: cliOption(rawOptions, "container") || cliOption(rawOptions, "instance"),
-        instancePath: cliOption(rawOptions, "containerPath", ["container-path"]),
+        instance: mountAlias(rawOptions, "instance", "container"),
+        instancePath: mountAlias(rawOptions, "instancePath", "containerPath", "instance-path", "container-path"),
         device: cliOption(rawOptions, "device")
       });
       return;
@@ -418,10 +428,12 @@ cli
     if (normalizedAction === "attach") {
       const [hostPath, instance, instancePath] = commandArgs;
       if (!hostPath || !instance) {
-        throw new Error("mount attach requires: <hostPath> <container> [/container/path]");
+        throw new Error("mount attach requires: <hostPath> <instance> [/instance/path]");
       }
+      const flagPath = mountAlias(rawOptions, "instancePath", "containerPath", "instance-path", "container-path");
+      if (instancePath && flagPath && instancePath !== flagPath) throw new Error("Positional instance path conflicts with --instance-path/--container-path");
       await mountAttachCmd(hostPath, instance, {
-        instancePath: instancePath || cliOption(rawOptions, "containerPath", ["container-path"]),
+        instancePath: instancePath || flagPath,
         device: cliOption(rawOptions, "device")
       });
       return;

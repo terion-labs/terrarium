@@ -18,7 +18,7 @@ function cloudInitFromPlan(plan: { cloudInit?: string }): Record<string, unknown
 describe("terrariumctl launch", () => {
   test("wraps basic LXD launch resource options", () => {
     expect(buildLaunchArgs("ubuntu:24.04", "web-01", { profiles: ["small"], disk: "40G", memory: "4G", cpu: "2" })).toEqual([
-      lxc,
+      lxc, "--project", "default",
       "launch",
       "ubuntu:24.04",
       "web-01",
@@ -129,7 +129,7 @@ describe("terrariumctl launch", () => {
       writeFileSync(userData, "#cloud-config\nhostname: raw-01\n");
 
       const plan = buildLaunchPlan("ubuntu:24.04", "raw-01", { cloudInit: userData });
-      expect(plan.args).toEqual([lxc, "init", "ubuntu:24.04", "raw-01"]);
+      expect(plan.args).toEqual([lxc, "--project", "default", "init", "ubuntu:24.04", "raw-01"]);
       expect(plan.cloudInit).toBe("#cloud-config\nhostname: raw-01\n");
       expect(() => buildLaunchArgs("ubuntu:24.04", "raw-01", { cloudInit: userData, playbooks: ["site.yml"] })).toThrow(
         "--cloud-init cannot be combined"
@@ -181,7 +181,7 @@ describe("terrariumctl launch", () => {
       writeFileSync(playbook, "- hosts: localhost\n  tasks: []\n");
       writeFileSync(
         fakeLxc,
-        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$TERRARIUM_LXC_ARGS_LOG\"\nif [ \"$1\" = config ] && [ \"$2\" = set ]; then cat > \"$TERRARIUM_LXC_STDIN_LOG\"; fi\nexit 0\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$TERRARIUM_LXC_ARGS_LOG\"\nshift 2\nif [ \"$1\" = image ]; then printf 'Type: container\\nArchitecture: x86_64\\n'; exit 0; fi\nif [ \"$1\" = config ] && [ \"$2\" = set ]; then cat > \"$TERRARIUM_LXC_STDIN_LOG\"; fi\nexit 0\n",
         { mode: 0o755 }
       );
 
@@ -226,7 +226,7 @@ describe("terrariumctl launch", () => {
       const playbook = join(dir, "site.yml");
       const secret = "launch-secret-not-in-error";
       writeFileSync(playbook, "- hosts: localhost\n  tasks: []\n");
-      writeFileSync(fakeLxc, "#!/bin/sh\nexit 42\n", { mode: 0o755 });
+      writeFileSync(fakeLxc, "#!/bin/sh\nshift 2\nif [ \"$1\" = image ]; then printf 'Type: container\\nArchitecture: x86_64\\n'; exit 0; fi\nexit 42\n", { mode: 0o755 });
 
       const result = Bun.spawnSync({
         cmd: [
@@ -250,7 +250,7 @@ describe("terrariumctl launch", () => {
       const stderr = new TextDecoder().decode(result.stderr);
       expect(result.exitCode).toBe(1);
       expect(stderr).toContain("command failed");
-      expect(stderr).toContain("lxc init ubuntu:24.04 secret-fail");
+      expect(stderr).toContain("lxc --project default init ubuntu:24.04 secret-fail");
       expect(stderr).not.toContain(secret);
       expect(stderr).not.toContain("cloud-init.user-data");
     } finally {

@@ -1,98 +1,66 @@
-# Backups and Restore
+# Backups and restore
 
-Terrarium provides three different layers of protection for your data, giving you the flexibility to easily undo a small mistake or recover your entire server after a catastrophe.
+Terrarium backs up containers and Linux VMs through local ZFS snapshots, S3 exports, and optional Syncoid replication. These capture disk state, not a VM's running memory. Applications must tolerate crash recovery or arrange their own quiescing/application backups.
 
-1. **The Local Time Machine (ZFS Snapshots):** Fast, automatic snapshots of your containers every 15 minutes.
-2. **Disaster Recovery (S3 Exports):** Encrypted and compressed off-site backups to the cloud.
-3. **Off-Host Replication (Syncoid):** Constant ZFS-to-ZFS mirroring to a second server (optional).
+## Local restore points
 
-## The Local Time Machine
+Sanoid retains four 15-minute snapshots, 24 hourly snapshots, 14 daily snapshots, and three monthly snapshots. A VM's metadata filesystem and block volume are sibling datasets. One recursive ZFS snapshot operation captures them in the same transaction; Terrarium skips incomplete or mismatched pairs.
 
-By default, Terrarium takes an incredibly lightweight snapshot of your containers in the background using a tool called `sanoid`. 
-
-Your local history retains:
-- **4** 15-minute snapshots
-- **24** hourly snapshots
-- **14** daily snapshots
-- **3** monthly snapshots
-
-*(Because ZFS snapshots only store changed data blocks, keeping all of these snapshots requires very little storage space.)*
-
-### Useful Commands
-
-**See your available snapshots:**
 ```bash
-terrariumctl backup list
+trm backup list
+trm backup restore --instance app
+trm backup restore --instance app --at autosnap_2026-10-02_08:00:00_hourly
+trm backup restore --instance app --as-new app-recovered
 ```
 
-**Restore a container to its absolute latest state (Undo the last 15 minutes):**
+Local recovery reconstructs the selected set into separate storage and verifies snapshot identities. In-place recovery then asks for confirmation, gracefully stops the guest, and replaces its disks. Previous disks remain in the reported staging dataset until you verify the result and remove them. Allow enough free space for reconstruction and the retained original. Current LXD configuration is retained for in-place recovery.
+
+A restore-as-new leaves the source intact. Terrarium prepares recovery metadata, opens the native `lxd recover` dialog, and verifies that the selected instance was imported. Select the indicated pool and import the recovered instance. LXD's recovery dialog remains interactive.
+
+Copies lose route labels, static NIC identities, proxies, and host-bound data disks. VM copies boot under an OVN deny-all policy while machine and SSH identities are replaced. Completed cloud-init provisioning is preserved. If identity preparation fails, the copy remains quarantined for inspection. Successful recovery leaves the guest stopped; start it with `lxc start NAME`.
+
+Run a local restore on the cluster member that owns the source datasets. Terrarium discovers the physical ZFS root from LXD; the LXD pool label and ZFS pool name may differ.
+
+## S3 export and recovery
+
+Configure S3 during installation or with `trm set s3`. The hourly service exports complete snapshot sets. You can also run:
+
 ```bash
-terrariumctl backup restore --instance my-app
+trm backup export
+trm backup list
+trm backup restore --source s3 --instance app --as-new app-recovered
 ```
 
-**Restore a container to a specific point in time:**
+New exports use version 2 manifests. Each records instance type, architecture, installation/project/instance identity, parent manifest, and every component's snapshot GUID, compressed size, and SHA-256 checksum. Streams are uploaded before the manifest is published. A failed component leaves the last successful backup state unchanged. Recursive snapshot holds protect the transfer from Sanoid pruning. Frequent snapshots are excluded from S3 export to avoid using short-lived incremental parents.
+
+A valid retained parent produces an incremental export; a pruned or unavailable parent starts a new full baseline. Deleting an instance and reusing its name creates a separate backup identity. When several identities share a name, use `--at` with the full backup ID printed by `backup list`.
+
+Restore validates the complete parent chain, downloads and verifies each stream, and receives into staging before replacing any live disk. Missing parents, cycles, checksum failures, and incomplete VM sets are errors. Previously written single-dataset container manifests remain readable through the legacy restore path.
+
+The host needs temporary space for a compressed component during export/download and ZFS staging space for full streams and restore reconstruction. Full streams preserve native LXD snapshot history and child filesystems while removing dependencies on cached image origins. S3 service results are shown by `trm status`; inspect `journalctl -u terrarium-s3-backup.service` for failures. The existing instance stays available when reconstruction fails before the replacement step.
+
+## Syncoid replication
+
+Configure a destination with `trm set syncoid`. The hourly service and manual command use the same complete-set controller:
+
 ```bash
-terrariumctl backup restore --instance my-app --at autosnap_2026-04-19_10:00:00_hourly
+trm backup replicate
 ```
 
-## Restoring In-Place vs. Restoring As New
+Container replicas keep the existing `TARGET_DATASET/INSTANCE` layout. VM replicas use `TARGET_DATASET-virtual-machines/INSTANCE` and `INSTANCE.block`, avoiding collisions with historical container destinations. The controller excludes ingress helpers, holds complete source snapshots, sends existing snapshots without independently creating new ones, and verifies both destination GUIDs before reporting success.
 
-When you run a standard `restore` command, Terrarium gracefully stops your container, instantly rewinds its hard drive to the requested snapshot, and tells you to start it back up. **This overwrites the broken container.**
+A failed transfer may leave one newer component at the destination. Select a snapshot suffix that exists in both siblings with matching source transaction identity; do not treat one received component as a complete VM backup. Syncoid does not force-delete an unrelated destination history. Resolve a source-identity conflict by retaining the old replica and choosing a fresh destination.
 
-But what if you want to inspect a snapshot *without* destroying the current version of the app? 
+Replica recovery requires both datasets, recovery metadata, and an LXD import before a VM can boot. Replication does not make an unregistered replica immediately runnable.
 
-You can restore a snapshot as a completely **new, separate container**:
+## Identity provider backups
+
+The local identity provider remains a managed container and uses the same backup machinery:
+
 ```bash
-terrariumctl backup restore --instance my-app --as-new my-app-restored
-```
-*Note: Terrarium automatically strips the network routing labels off the restored copy. This prevents the clone from accidentally hijacking your live website's traffic.*
-
-## Disaster Recovery: S3 Exports
-
-If your VPS catches on fire or is accidentally deleted, local snapshots won't save you. You need off-site backups.
-
-If you enabled S3 backups during installation (or later via `terrariumctl set s3`), Terrarium will compress your ZFS snapshots and stream them directly to an S3-compatible bucket (like AWS S3, Cloudflare R2, or Backblaze B2).
-
-**Trigger a manual S3 upload:**
-```bash
-terrariumctl backup export
+trm idp status
+trm idp backup
+trm idp restore
 ```
 
-**Restore a completely destroyed container from the cloud:**
-```bash
-terrariumctl backup restore --source s3 --instance my-app
-```
-*(This command works exactly the same as a local restore, but it will download and unpack the heavy ZFS data from your S3 bucket first.)*
-
-## Backing Up Your Logins (ZITADEL)
-
-If you are using Terrarium's built-in local login provider (ZITADEL), your entire authentication database is actually running inside a hidden LXD container named `terrarium-idp`. 
-
-This means it is automatically protected by the exact same time machine.
-
-**See the health of your login provider:**
-```bash
-terrariumctl idp status
-```
-
-**Force an immediate backup of your login database:**
-```bash
-terrariumctl idp backup
-```
-
-**Undo a catastrophic change to your users/groups:**
-```bash
-terrariumctl idp restore
-```
-
-*(You can even restore your login database from an S3 backup if your entire server goes down.)*
-
----
-
-## Advanced: Syncoid Replication
-
-If you own a second server running ZFS, Terrarium can constantly stream block-level changes to it over an encrypted SSH connection. 
-
-This gives you a near real-time, instantly bootable replica of your entire infrastructure.
-
-*(You can set this up during installation, or configure it later using `terrariumctl set syncoid`)*
+This applies to the configured local provider, including ZITADEL and Logto. An external provider's data is backed up by its operator.

@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { checkedCommand } from "./lib/lxd-storage";
+import { promoteBackupSet } from "./lib/s3-backup-sets";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -43,27 +46,33 @@ function selectChain(directory: string, match = ""): Manifest[] {
   for (const entry of new Bun.Glob("*.json").scanSync(directory)) {
     manifests.push(readJsonFile<Manifest>(join(directory, entry), {} as Manifest));
   }
-  manifests.sort((left, right) => left.created_at.localeCompare(right.created_at));
+  return selectLegacyChain(manifests, match);
+}
 
-  let selected: Manifest | undefined;
+export function selectLegacyChain(manifests: Manifest[], match = ""): Manifest[] {
+  const bySnapshot = new Map<string, Manifest>();
   for (const item of manifests) {
-    if (!match || item.snapshot.includes(match) || item.created_at.includes(match)) {
-      selected = item;
-    }
+    if (typeof item.snapshot !== "string" || !item.snapshot.includes("/containers/") || !item.snapshot.includes("@") || typeof item.object_key !== "string" || !item.object_key || typeof item.created_at !== "string" || !Number.isFinite(Date.parse(item.created_at))) throw new Error("Invalid legacy container backup manifest");
+    if (item.parent_snapshot && typeof item.parent_snapshot !== "string") throw new Error("Invalid legacy backup parent");
+    if (bySnapshot.has(item.snapshot)) throw new Error(`Duplicate legacy backup snapshot ${item.snapshot}`);
+    bySnapshot.set(item.snapshot, item);
   }
-  if (!selected) {
-    throw new Error("no matching manifest chain found");
-  }
-
-  const bySnapshot = new Map(manifests.map((item) => [item.snapshot, item]));
+  const selected = manifests.filter((item) => !match || item.snapshot.includes(match) || item.created_at.includes(match)).sort((a, b) => a.created_at.localeCompare(b.created_at)).at(-1);
+  if (!selected) throw new Error("no matching manifest chain found");
   const chain: Manifest[] = [];
+  const seen = new Set<string>();
   let current: Manifest | undefined = selected;
   while (current) {
+    if (seen.has(current.snapshot)) throw new Error("Legacy backup chain contains a cycle");
+    if (current.snapshot.split("@")[0] !== selected.snapshot.split("@")[0]) throw new Error("Legacy backup chain crosses source datasets");
+    seen.add(current.snapshot);
     chain.push(current);
-    current = current.parent_snapshot ? bySnapshot.get(current.parent_snapshot) : undefined;
+    if (!current.parent_snapshot) break;
+    const parent = bySnapshot.get(current.parent_snapshot);
+    if (!parent) throw new Error(`Legacy backup chain is missing parent ${current.parent_snapshot}`);
+    current = parent;
   }
-  chain.reverse();
-  return chain;
+  return chain.reverse();
 }
 
 export function isRetriableS3RestoreError(message: string): boolean {
@@ -160,7 +169,7 @@ async function receiveS3Chain(
 
     try {
       for (const manifest of chain) {
-        const command = `set -o pipefail; ${awsBase.map(shellEscape).join(" ")} s3 cp ${shellEscape(`s3://${bucket}/${manifest.object_key}`)} - | zstd -d | zfs receive -F ${shellEscape(targetDataset)}`;
+        const command = `set -o pipefail; ${awsBase.map(shellEscape).join(" ")} s3 cp ${shellEscape(`s3://${bucket}/${manifest.object_key}`)} - | zstd -d | zfs receive -u -F -o mountpoint=none ${shellEscape(targetDataset)}`;
         const result = await runAllowFailure(["bash", "-lc", command], { env: awsEnv });
         if (result.exitCode !== 0) {
           throw new Error(formatPipelineFailure(result));
@@ -180,7 +189,7 @@ async function receiveS3Chain(
   throw new Error(lastError || "S3 restore failed");
 }
 
-export async function reconstructFromS3(instance: string, at: string, targetDataset: string, configPath = DEFAULT_CONFIG_PATH): Promise<void> {
+export async function reconstructFromS3(instance: string, at: string, targetDataset: string, configPath = DEFAULT_CONFIG_PATH, beforePromote?: () => Promise<void>): Promise<void> {
   const config = loadConfig(configPath, PREFIX);
   const bucket = configString(config, "terrarium_s3_bucket");
   const endpoint = normalizeS3Endpoint(configString(config, "terrarium_s3_endpoint"));
@@ -193,12 +202,23 @@ export async function reconstructFromS3(instance: string, at: string, targetData
 
   const tempDir = makeTempDir("terrarium-restore.");
   try {
-    await runText([...awsBase, "s3", "cp", `s3://${bucket}/${prefix}/manifests/${instance}/`, `${tempDir}/`, "--recursive"], PREFIX, {
+    await checkedCommand([...awsBase, "s3", "cp", `s3://${bucket}/${prefix}/manifests/${instance}/`, `${tempDir}/`, "--recursive"], {
       env: awsEnv
     });
     const chain = selectChain(tempDir, at);
 
-    await receiveS3Chain(chain, awsBase, bucket, targetDataset, awsEnv);
+    const marker = targetDataset.indexOf("/containers/");
+    if (marker < 1) throw new Error("Legacy restore target must be a container dataset");
+    const stagingRoot = `${targetDataset.slice(0, marker)}/terrarium-restore-${randomUUID()}`;
+    const stagingDataset = `${stagingRoot}/filesystem`;
+    await checkedCommand(["zfs", "create", "-o", "mountpoint=none", stagingRoot]);
+    try {
+      await receiveS3Chain(chain, awsBase, bucket, stagingDataset, awsEnv);
+      await beforePromote?.();
+      await promoteBackupSet({ stagingRoot, components: [{ role: "filesystem", dataset: stagingDataset }] }, [{ role: "filesystem", dataset: targetDataset }], !!beforePromote);
+    } catch (error) {
+      throw new Error(`${error}; legacy restore staging retained at ${stagingRoot}`);
+    }
   } finally {
     if (existsSync(tempDir)) {
       removePath(tempDir);

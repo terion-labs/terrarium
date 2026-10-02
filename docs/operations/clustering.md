@@ -128,3 +128,11 @@ terrariumctl cluster restore node2 --yes
 terrariumctl cluster remove node2
 terrariumctl reconfigure
 ```
+
+## Virtual machines and ingress helpers
+
+`trm launch IMAGE NAME --vm --target MEMBER` selects a VM-capable member explicitly. Without a target, Terrarium chooses an online member that advertises VM support for the image's architecture. Container-only and VM-capable members can coexist.
+
+`trm cluster move INSTANCE MEMBER` performs a cold move. It checks the destination and host-bound devices before shutting down, preserves stopped instances as stopped, and restarts previously running instances after a successful move. A failed graceful stop aborts; Terrarium does not force power off. Member removal validates every planned destination before moving the first workload.
+
+Internal `terrarium-ingress-*` containers belong to individual members. They are excluded from workload counts and automatic movement, and are removed with their member. Each remaining ingress host reconciles its own loopback devices after a workload moves. Host directory disks must be detached before movement and attached on the destination afterward.

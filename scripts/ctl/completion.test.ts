@@ -40,14 +40,14 @@ describe("terrariumctl completion", () => {
     expect(script).toContain("complete -F _terrariumctl_complete terrariumctl");
     expect(script).toContain("complete -F _terrariumctl_complete trm");
     expect(script).toContain("backup) COMPREPLY");
-    expect(script).toContain("list export restore");
+    expect(script).toContain("list export replicate restore");
     expect(script).toContain("update");
     expect(script).toContain("update) COMPREPLY");
     expect(script).toContain("launch) COMPREPLY");
     expect(script).toContain("image) COMPREPLY");
     expect(script).toContain("create list launch delete");
-    expect(script).toContain("--snapshot --live --reuse --profile --disk --memory --cpu --proxy");
-    expect(script).toContain("--profile --disk --memory --cpu --requirements --playbook --role --docker-compose --cloud-init --proxy");
+    expect(script).toContain("--snapshot --live --reuse --vm --target --wait --timeout --profile --disk --memory --cpu --proxy --requirements --playbook --role --docker-compose --cloud-init --var --vars");
+    expect(script).toContain("--vm --target --wait --timeout --var --vars --profile --disk --memory --cpu --requirements --playbook --role --docker-compose --cloud-init --proxy");
     expect(script).toContain("--ref --skip-reconfigure --non-interactive");
     expect(script).toContain("--skip-reconfigure");
     expect(script).toContain("--logto-admin-email");
@@ -70,8 +70,8 @@ describe("terrariumctl completion", () => {
 
     expect(zsh).toContain("#compdef terrariumctl trm");
     expect(zsh).toContain("update) opts=(--ref --skip-reconfigure --non-interactive)");
-    expect(zsh).toContain("launch) opts=(--profile --disk --memory --cpu --requirements --playbook --role --docker-compose --cloud-init --proxy)");
-    expect(zsh).toContain("image) actions=(create list launch delete); opts=(--snapshot --live --reuse --profile --disk --memory --cpu --proxy)");
+    expect(zsh).toContain("launch) opts=(--vm --target --wait --timeout --var --vars --profile --disk --memory --cpu --requirements --playbook --role --docker-compose --cloud-init --proxy)");
+    expect(zsh).toContain("image) actions=(create list launch delete); opts=(--snapshot --live --reuse --vm --target --wait --timeout --profile --disk --memory --cpu --proxy --requirements --playbook --role --docker-compose --cloud-init --var --vars)");
     expect(zsh).toContain("compadd local oidc");
     expect(zsh).toContain("compadd provider");
     expect(fish).toContain("complete -c terrariumctl");

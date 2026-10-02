@@ -8,7 +8,7 @@ Because Terrarium relies heavily on ZFS to power its "time machine" snapshots, i
 
 For the best performance and safety, you should create a VPS with **two separate drives**:
 1. **A small boot disk:** Just for the Ubuntu operating system and Terrarium's core control plane.
-2. **A larger attached volume:** Dedicated entirely to your LXD containers and their snapshots.
+2. **A larger attached volume:** Dedicated entirely to your LXD containers, VM disks and their snapshots.
 
 If you have two disks, you will choose **`--storage-mode disk`** during installation. Terrarium will automatically format the second drive and use it exclusively for your isolated environments.
 
@@ -58,3 +58,7 @@ For example, if you think your apps will use 50 GB of data, attach a 150 GB volu
 
 ---
 *Ready to launch your server? Check our [Provider Guides](../providers/README.md) to see exactly how to attach these storage volumes on providers like DigitalOcean and Hetzner.*
+
+## VM disk space
+
+The VM profiles allocate a 20 GiB root disk and 2 GiB of memory by default. The guest OS, Docker images and application data all use that disk. ZFS snapshot retention needs additional host capacity as blocks change. The companion metadata filesystem and root block volume must be backed up together. Attached host directories and CIFS shares are separate storage and are not included in the instance root backup.

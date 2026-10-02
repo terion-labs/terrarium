@@ -2,9 +2,9 @@
 
 Terrarium transforms a standard Ubuntu 24.04 or 26.04 VPS into a much friendlier, safer, and incredibly forgiving home for your applications and isolated environments.
 
-It was built to solve a very modern problem: today's AI agents, development tools, and complex self-hosted apps often need more freedom than standard Docker containers can comfortably provide. But giving them unlimited access to your host operating system is a recipe for disaster. 
+It was built to solve a very modern problem: today's AI agents, development tools, and complex self-hosted apps often need more freedom than standard Docker containers can comfortably provide. But giving them unlimited access to your host operating system is a recipe for disaster.
 
-Terrarium sits perfectly in the middle. It gives every workload its own fully isolated LXC container powered by a robust ZFS file system. Your host machine stays clean and secure, while you get the convenience of built-in web dashboards, automatic SSL routing, and an automated time machine to undo any mistakes.
+Terrarium sits perfectly in the middle. It gives every workload an LXD container or Linux virtual machine backed by ZFS. Your host machine stays clean and secure, while you get the convenience of built-in web dashboards, automatic SSL routing, and an automated time machine to undo any mistakes.
 
 ## What Is It For?
 
@@ -22,9 +22,9 @@ The goal isn't just to "run containers." It's to give your software the breathin
 Terrarium brings enterprise-grade infrastructure features down to earth, combining them into a simple, cohesive experience:
 
 - **True Isolation**
-  Every workload lives in its own container with its own processes, packages, and filesystem. What happens in the container, stays in the container.
+  Every workload lives in its own container or VM with its own processes, packages, and filesystem. Containers share the host kernel; VMs run a separate guest kernel.
 - **Private-by-Default Security**
-  By default, containers sit behind a private network. Just because a database is running doesn't mean it's exposed to the internet. You explicitly choose what to publish.
+  By default, instances sit behind a private network. Just because a database is running doesn't mean it's exposed to the internet. You explicitly choose what to publish.
 - **The Built-In Time Machine**
   Terrarium takes automated ZFS snapshots of your environments. If an update breaks or an agent deletes something important, you don't have to rebuild. Just rewind.
 - **Disaster Recovery Ready**
@@ -36,11 +36,11 @@ Terrarium is designed for tech enthusiasts who want the flexibility of a full se
 
 ## Technical details in short
 
-Terrarium sets up and orchestrates LXD, Traefik, Firewall, Virtual Networking, clustering, ZFS and backups. 
+Terrarium sets up and orchestrates LXD, Traefik, Firewall, Virtual Networking, clustering, ZFS and backups.
 
-LXD is a systen that runs LXC containers and VMs (we are focused on containers). LXC containers are Linux system containers that sit conceptually between Docker-style application containers and traditional VMs. Like Docker containers, they are lightweight and share the host kernel using Linux namespaces and cgroups. Unlike typical Docker usage, LXC is often used to run a full OS-like userspace with init, package management, services, users, and networking, giving a VM-like administration experience without hardware virtualization overhead. They can also run inside ordinary cloud VMs because they do not require nested virtualization, though their isolation is not as strong as a true VM because the kernel is shared with the host. 
+LXD runs both LXC containers and virtual machines. Terrarium supports both. LXC containers are Linux system containers that sit conceptually between Docker-style application containers and traditional VMs. Like Docker containers, they are lightweight and share the host kernel using Linux namespaces and cgroups. Unlike typical Docker usage, LXC is often used to run a full OS-like userspace with init, package management, services, users, and networking, giving a VM-like administration experience without hardware virtualization overhead. They can also run inside ordinary cloud VMs because they do not require nested virtualization, though their isolation is not as strong as a true VM because the kernel is shared with the host.
 
-Using ZFS brings to the mix cheap hot snapshots that give "time machine" like experience with ability to "rewind" containers state in small increments together with exportable backups. 
+Using ZFS brings to the mix cheap hot snapshots that give "time machine" like experience with ability to "rewind" containers state in small increments together with exportable backups.
 
 Traefik is a reverse proxy that lives on host and can pass traffic in containers (in case of Terrarium - autoconfigurated via labels on containers). All this works on single node or in a cluster, that is built upon OVN and secure wireguard internal connections.
 

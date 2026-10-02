@@ -19,7 +19,7 @@ function expectTerrariumUserProfile(
   expect(content).toContain("gecos: Terrarium Container User");
   expect(content).toContain("lock_passwd: true");
   expect(content).toContain("shell: /bin/bash");
-  expect(content).toContain("sudo: []");
+  expect(content).toContain(options.allowsPasswordlessSudo ? 'sudo: ["ALL=(ALL) NOPASSWD:ALL"]' : "sudo: []");
   if (options.allowsPasswordlessSudo) {
     expect(content).toContain("NOPASSWD");
   } else {
@@ -90,10 +90,9 @@ describe("LXD profiles", () => {
 
     expectTerrariumUserProfile(devProfile, { allowsPasswordlessSudo: true });
     expect(devProfile).toContain("name: dev");
-    expect(devProfile).toContain("cloud-init.user-data: |");
-    expect(devProfile).toContain("path: /etc/sudoers.d/90-terrarium-dev");
-    expect(devProfile).toContain("permissions: \"0440\"");
-    expect(devProfile).toContain("terrarium ALL=(ALL) NOPASSWD:ALL");
+    expect(devProfile).toContain("cloud-init.vendor-data: |");
+    expect(devProfile).not.toContain("cloud-init.user-data:");
+    expect(devProfile).not.toContain("write_files:");
     expect(devProfile).toContain('security.idmap.isolated: "true"');
     expect(devProfile).toContain('security.nesting: "true"');
     expect(devProfile).toContain('security.syscalls.intercept.mknod: "true"');

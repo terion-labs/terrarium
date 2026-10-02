@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Terrarium
   text: Complex infrastructure made incredibly simple. Turn any VPS into a secure, forgiving home for your apps and AI agents.
-  tagline: Give each workload its own isolated container, keep everything private by default, and publish only what you need. With built-in web dashboards, automated SSL, single sign-on, and a time machine to undo mistakes, managing your server has never been simpler.
+  tagline: Give each workload its own container or Linux virtual machine, keep everything private by default, and publish only what you need. With built-in web dashboards, automated SSL, single sign-on, and a time machine to undo mistakes, managing your server has never been simpler.
   image:
     src: ./banner.webp
     alt: Terrarium
@@ -27,7 +27,7 @@ features:
   - title: 🌐 Effortless Publishing
     details: Route your apps to the web through Traefik with automatic SSL certificates. Lock down private dashboards and tools with built-in Single Sign-On (OIDC).
   - title: 🖥️ Visual Dashboards
-    details: You don't have to live in the terminal. Manage your server, containers, and network traffic through beautiful, built-in web interfaces like Cockpit and the LXD UI.
+    details: You don't have to live in the terminal. Manage your server, instances, and network traffic through beautiful, built-in web interfaces like Cockpit and the LXD UI.
   - title: 🤖 Perfect for AI Agents
     details: Give autonomous agents like OpenClaw or Hermes a real environment to work in. If they make a mess, your host stays safe, and you can instantly reset their sandbox.
   - title: 🐳 Beyond Basic Docker
@@ -39,7 +39,7 @@ features:
     <p class="terrarium-eyebrow">Why you'll love it</p>
     <h2>One server. Total isolation. Zero stress.</h2>
     <p>
-      Managing a server shouldn't require a PhD in systems engineering. Terrarium is built for tech enthusiasts who want the power of a dedicated VPS without the anxiety of breaking it. Every app, AI agent, or development environment gets its own isolated container. The host stays pristine, and recovery is as easy as clicking "undo".
+      Managing a server shouldn't require a PhD in systems engineering. Terrarium is built for tech enthusiasts who want the power of a dedicated VPS without the anxiety of breaking it. Every app, AI agent, or development environment gets its own container or Linux virtual machine. The host stays pristine, and recovery is as easy as clicking "undo".
     </p>
   </section>
 
@@ -96,7 +96,7 @@ It's advanced security without the complex configuration. You get to move fast a
     </p>
     <ul class="terrarium-checklist">
       <li><strong>Cockpit:</strong> Your mission control for host administration, system logs, and storage health.</li>
-      <li><strong>LXD UI:</strong> A sleek interface to create containers, manage networks, and instantly restore snapshots.</li>
+      <li><strong>LXD UI:</strong> A sleek interface to create containers and VMs, manage networks, and instantly restore snapshots.</li>
       <li><strong>Traefik Dashboard:</strong> Watch your live network routing and ensure your traffic is flowing exactly where it should.</li>
     </ul>
     <p>Take the visual tour in our <a href="./getting-started/management-guis">Management GUIs guide</a>.</p>
@@ -106,7 +106,7 @@ It's advanced security without the complex configuration. You get to move fast a
     <p class="terrarium-eyebrow">What's Under the Hood?</p>
     <h2>Powerful open-source tools, orchestrated beautifully.</h2>
     <ul class="terrarium-checklist">
-      <li><a href="https://github.com/canonical/lxd">LXD</a> for lightweight, lightning-fast containers</li>
+      <li><a href="https://github.com/canonical/lxd">LXD</a> for Linux system containers and virtual machines</li>
       <li><a href="https://github.com/openzfs/zfs">OpenZFS</a> for instant snapshots and data integrity</li>
       <li><a href="https://github.com/traefik/traefik">Traefik</a> for dynamic routing and automated SSL</li>
       <li><a href="https://github.com/cockpit-project/cockpit">Cockpit</a> for host-level visual administration</li>

@@ -2,11 +2,11 @@
 
 You shouldn't have to memorize a hundred command-line flags just to see what your server is doing. 
 
-One of Terrarium's best features is that it comes with a suite of beautiful, browser-based management dashboards right out of the box. Whether you're checking server health, launching new containers, or troubleshooting network traffic, there is a visual interface ready to help.
+One of Terrarium's best features is that it comes with a suite of beautiful, browser-based management dashboards right out of the box. Whether you're checking server health, launching containers or VMs, or troubleshooting network traffic, there is a visual interface ready to help.
 
 By default, these dashboards are located at:
 - **Cockpit (Host Management):** `manage.<your-domain>`
-- **LXD (Container Management):** `lxd.<your-domain>`
+- **LXD (Instance Management):** `lxd.<your-domain>`
 - **Traefik (Network Routing):** `proxy.<your-domain>`
 
 *Note: All of these dashboards are secured behind Terrarium's Single Sign-On (SSO) gate. Only users in your admin group can access them.*
@@ -29,14 +29,16 @@ Terrarium also pre-installs special ZFS and S3 extensions for Cockpit, making it
 
 ---
 
-## The LXD UI (Container Management)
+## The LXD UI (Instance Management)
 **Where your environments live.**
 
 This is likely where you'll spend most of your time. The LXD UI is a sleek dashboard for managing all your isolated workloads. Use it to:
-- Create, start, stop, and delete containers.
+- Create, start, stop, and delete containers and virtual machines.
 - View real-time resource usage for specific apps.
 - Take and restore snapshots with the click of a button.
-- Manage container profiles, networks, and storage.
+- Manage instance profiles, networks, and storage.
+
+For a VM, select **Virtual machine**, choose an Ubuntu cloud VM image, and replace the container default profile with `vm` or `vm-dev`. Use the VM console when the guest agent is unavailable; exec and file access require a working agent. UI-created VMs use the same routing, backup and storage discovery as CLI-created VMs. Native LXD snapshots shown here are separate from Sanoid restore points listed by `trm backup list`.
 
 ![LXD UI instances view](./screenshots/lxd-ui-instances.png)  
 *Source: [Canonical MicroCloud tutorial](https://documentation.ubuntu.com/microcloud/latest/tutorial/multi-member/)*

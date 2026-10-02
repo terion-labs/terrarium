@@ -6,4 +6,4 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=HOME=/root
-ExecStart=/usr/sbin/syncoid --recursive --force-delete --sshkey {{ terrarium_syncoid_ssh_key }} {{ terrarium_lxd_pool_name }}/containers {{ terrarium_syncoid_target }}:{{ terrarium_syncoid_target_dataset }}
+ExecStart=/usr/local/bin/terrariumctl backup replicate

@@ -4,6 +4,7 @@ import { stringify } from "yaml";
 import { runInteractive, runText, shellEscape } from "../lib/common";
 import { validateProxyLabel } from "../terrarium-traefik-sync";
 import { cliOption, PREFIX } from "./context";
+import { instanceType, lxcArgs, lxcCommand, readinessTimeout, record, vmLaunchTarget, waitForInstanceReady } from "../lib/lxd-instance";
 
 const LXC = process.env.TERRARIUM_LXC_BIN ?? "/snap/bin/lxc";
 const LAUNCH_DIR = "/var/lib/terrarium-launch";
@@ -34,6 +35,10 @@ type LaunchCloudInitPlan = {
 };
 
 export type LaunchOptions = {
+  vm?: boolean;
+  target?: string;
+  wait?: boolean;
+  timeout?: string;
   profiles?: string[];
   disk?: string;
   memory?: string;
@@ -70,6 +75,10 @@ type CloudInit = {
 
 export function launchOptionsFromCli(options: Record<string, unknown>): LaunchOptions {
   return {
+    vm: options.vm === true ? true : undefined,
+    target: cliOption(options, "target"),
+    wait: options.wait === true,
+    timeout: cliOption(options, "timeout"),
     profiles: multiOption(options, "profile"),
     disk: cliOption(options, "disk"),
     memory: cliOption(options, "memory"),
@@ -433,6 +442,10 @@ export function buildLaunchPlan(image: string, name: string, options: LaunchOpti
   validateResourceValue(options.disk, "--disk");
   validateResourceValue(options.memory, "--memory");
   validateResourceValue(options.cpu, "--cpu");
+  readinessTimeout(options.timeout);
+  if (options.vm && options.profiles?.some((profile) => ["default", "terrarium", "strict", "dev", "kvm"].includes(profile))) {
+    throw new Error("Container profiles cannot be used for VMs; choose vm, vm-dev, or a VM-compatible custom profile");
+  }
 
   if (options.cloudInit && needsGeneratedCloudInit(options)) {
     throw new Error("--cloud-init cannot be combined with --requirements, --playbook, --role, --docker-compose, --var, or --vars");
@@ -443,8 +456,10 @@ export function buildLaunchPlan(image: string, name: string, options: LaunchOpti
     : needsGeneratedCloudInit(options)
       ? generatedCloudInit(options)
       : undefined;
-  const args = [LXC, cloudInit ? "init" : "launch", normalizedImage, normalizedName];
-  for (const profile of options.profiles ?? []) {
+  const args = lxcArgs(cloudInit ? "init" : "launch", normalizedImage, normalizedName);
+  if (options.vm) args.push("--vm");
+  if (options.target) args.push("--target", options.target);
+  for (const profile of options.profiles?.length ? options.profiles : options.vm ? ["vm"] : []) {
     args.push("--profile", profile);
   }
   if (options.disk) {
@@ -470,12 +485,26 @@ export function buildLaunchArgs(image: string, name: string, options: LaunchOpti
 }
 
 export async function launchCmd(image: string, name: string, options: LaunchOptions): Promise<void> {
-  const plan = buildLaunchPlan(image, name, options);
-  await runInteractive(plan.args, PREFIX);
-  if (!plan.cloudInit) {
-    return;
+  // Validate local files and flags before contacting an image server.
+  buildLaunchPlan(image, name, options);
+  const info = await lxcCommand(["image", "info", image, ...(options.vm ? ["--vm"] : [])], { timeoutMs: 120_000 });
+  const type = instanceType(info.match(/^Type: (.+)$/m)?.[1]?.trim());
+  if (options.vm && type !== "virtual-machine") throw new Error(`Image ${image} is a container image, not a VM image`);
+  const resolved: LaunchOptions = { ...options, vm: type === "virtual-machine" };
+  if (resolved.vm) {
+    resolved.target = await vmLaunchTarget(options.target, info.match(/^Architecture: (.+)$/m)?.[1]?.trim());
+    for (const profile of resolved.profiles?.length ? resolved.profiles : ["vm"]) {
+      const data = record(JSON.parse(await lxcCommand(["query", `/1.0/profiles/${encodeURIComponent(profile)}?project=default`])), "LXD profile");
+      const config = record(data.config ?? {}, "profile config");
+      const incompatible = Object.keys(config).filter((key) => /^(security\.(nesting|privileged|idmap\.|syscalls\.)|raw\.idmap|limits\.(kernel\.|processes))/.test(key));
+      if (incompatible.length) throw new Error(`Profile ${profile} contains container-only settings: ${incompatible.join(", ")}`);
+    }
   }
-
-  await runText([LXC, "config", "set", plan.instanceName, "cloud-init.user-data", "-"], PREFIX, { stdin: plan.cloudInit });
-  await runInteractive([LXC, "start", plan.instanceName], PREFIX);
+  const plan = buildLaunchPlan(image, name, resolved);
+  await runInteractive(plan.args, PREFIX);
+  if (plan.cloudInit) {
+    await lxcCommand(["config", "set", plan.instanceName, "cloud-init.user-data", "-"], { stdin: plan.cloudInit });
+    await runInteractive(lxcArgs("start", plan.instanceName), PREFIX);
+  }
+  if (resolved.wait) await waitForInstanceReady(plan.instanceName, { provisioning: true, timeoutMs: readinessTimeout(resolved.timeout) });
 }

@@ -922,6 +922,9 @@
     - { name: "terrarium", template: "terrarium-profile.yml.j2", path: "{{ terrarium_state_dir }}/terrarium-profile.yml" }
     - { name: "strict", template: "strict-profile.yml.j2", path: "{{ terrarium_state_dir }}/strict-profile.yml" }
     - { name: "dev", template: "dev-profile.yml.j2", path: "{{ terrarium_state_dir }}/dev-profile.yml" }
+    - { name: "vm", template: "vm-profile.yml.j2", path: "{{ terrarium_state_dir }}/vm-profile.yml" }
+    - { name: "vm-dev", template: "vm-dev-profile.yml.j2", path: "{{ terrarium_state_dir }}/vm-dev-profile.yml" }
+    - { name: "terrarium-ingress", template: "terrarium-ingress-profile.yml.j2", path: "{{ terrarium_state_dir }}/terrarium-ingress-profile.yml" }
   register: terrarium_lxd_profiles
   failed_when: false
   changed_when: false
@@ -936,6 +939,9 @@
     - { name: "terrarium", template: "terrarium-profile.yml.j2", path: "{{ terrarium_state_dir }}/terrarium-profile.yml" }
     - { name: "strict", template: "strict-profile.yml.j2", path: "{{ terrarium_state_dir }}/strict-profile.yml" }
     - { name: "dev", template: "dev-profile.yml.j2", path: "{{ terrarium_state_dir }}/dev-profile.yml" }
+    - { name: "vm", template: "vm-profile.yml.j2", path: "{{ terrarium_state_dir }}/vm-profile.yml" }
+    - { name: "vm-dev", template: "vm-dev-profile.yml.j2", path: "{{ terrarium_state_dir }}/vm-dev-profile.yml" }
+    - { name: "terrarium-ingress", template: "terrarium-ingress-profile.yml.j2", path: "{{ terrarium_state_dir }}/terrarium-ingress-profile.yml" }
 
 - name: Create missing Terrarium-managed LXD profiles
   ansible.builtin.command: "/snap/bin/lxc profile create {{ item.item.name }}"
@@ -951,6 +957,9 @@
     - { name: "terrarium", template: "terrarium-profile.yml.j2", path: "{{ terrarium_state_dir }}/terrarium-profile.yml" }
     - { name: "strict", template: "strict-profile.yml.j2", path: "{{ terrarium_state_dir }}/strict-profile.yml" }
     - { name: "dev", template: "dev-profile.yml.j2", path: "{{ terrarium_state_dir }}/dev-profile.yml" }
+    - { name: "vm", template: "vm-profile.yml.j2", path: "{{ terrarium_state_dir }}/vm-profile.yml" }
+    - { name: "vm-dev", template: "vm-dev-profile.yml.j2", path: "{{ terrarium_state_dir }}/vm-dev-profile.yml" }
+    - { name: "terrarium-ingress", template: "terrarium-ingress-profile.yml.j2", path: "{{ terrarium_state_dir }}/terrarium-ingress-profile.yml" }
 
 - name: Check whether host exposes KVM
   ansible.builtin.stat:

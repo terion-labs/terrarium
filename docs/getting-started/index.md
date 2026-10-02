@@ -23,3 +23,5 @@ To get off to the best start, we recommend following these steps:
 4. **Install:** Run the automated setup script.
 
 *Creating your VPS right now? Check out our [Provider Guides](../providers/) for specific setup instructions for DigitalOcean, Hetzner, Vultr, and others.*
+
+- [Linux virtual machines](./virtual-machines.md) — create and manage VMs through the same Terrarium workflows.

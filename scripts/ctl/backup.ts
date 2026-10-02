@@ -1,9 +1,16 @@
+import { directoryHasEntries, restoreCommandRunners, prepareRootfsDirectoryForLxdRecover, mountRootfsDatasetForLxdRecover, type CommandRunner, type RestoreCommandRunners } from "../lib/recovery-rootfs";
+export { prepareRootfsDirectoryForLxdRecover, mountRootfsDatasetForLxdRecover } from "../lib/recovery-rootfs";
+import { rewriteBackupYaml } from "../lib/recovery-metadata";
+export { rewriteRecoveredBackupMetadata, rewriteBackupYaml } from "../lib/recovery-metadata";
+import { replicateBackupSets } from "./replicate";
+import { restoreLocalSet, restoreS3Set } from "./restore-set";
+import { physicalZfsRoot } from "../lib/lxd-storage";
+import { loadBackupManifests, withBackupLock } from "../lib/s3-backup-sets";
 import { confirm } from "@inquirer/prompts";
-import { existsSync, mkdirSync, readdirSync, renameSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { parse, stringify } from "yaml";
 import { heading, label, requireConfig, success, value } from "./context";
-import { JsonRecord, configBoolean, configString, normalizeS3Endpoint, runAllowFailure, runInteractive, runText } from "../lib/common";
+import { configBoolean, configString, normalizeS3Endpoint, runAllowFailure, runInteractive, runText } from "../lib/common";
 import { backupExportCmd } from "../terrarium-s3-export";
 import { reconstructFromS3 } from "../terrarium-zfs-reconstruct";
 import { PREFIX } from "./context";
@@ -33,18 +40,21 @@ export async function backupListCmd(): Promise<void> {
     awsBase.push("--endpoint-url", endpoint);
   }
 
+  const root = await physicalZfsRoot(pool);
   console.log(heading("Local ZFS snapshots"));
   const snapshotsRaw = await runAllowFailure(["zfs", "list", "-H", "-t", "snapshot", "-o", "name", "-s", "creation"]);
   const snapshots = snapshotsRaw.stdout
     .split("\n")
-    .filter((line) => line.startsWith(`${pool}/containers/`))
+    .filter((line) => line.startsWith(`${root}/containers/`) || line.startsWith(`${root}/virtual-machines/`))
     .filter(Boolean);
   if (snapshots.length > 0) {
     console.log(snapshots.join("\n"));
   }
 
   if (configBoolean(config, "terrarium_enable_s3") && bucket) {
-    console.log(`\n${heading("S3 manifests")}`);
+    console.log(`\n${heading("S3 restore sets")}`);
+    for (const manifest of await loadBackupManifests(config)) console.log(`${manifest.created_at} ${manifest.instance_type} ${manifest.id}`);
+    console.log(`\n${heading("Legacy S3 manifests")}`);
     const output = (
       await runAllowFailure([...awsBase, "s3", "ls", `s3://${bucket}/${prefix}/manifests/`, "--recursive"], { env: awsEnv })
     ).stdout.trim();
@@ -63,7 +73,8 @@ async function confirmDestructive(message: string): Promise<void> {
 }
 
 async function stopInstanceForRestore(instance: string): Promise<void> {
-  await runAllowFailure(["lxc", "stop", instance, "--force"]);
+  const stopped = await runAllowFailure(["lxc", "--project", "default", "stop", instance, "--timeout", "60"], { timeoutMs: 90_000 });
+  if (stopped.exitCode !== 0 && !/already stopped/i.test(stopped.stderr + stopped.stdout)) throw new Error(`Could not gracefully stop ${instance}: ${stopped.stderr.trim()}`);
   const deadline = Date.now() + 60000;
   while (Date.now() < deadline) {
     const info = await runAllowFailure(["lxc", "info", instance]);
@@ -73,26 +84,6 @@ async function stopInstanceForRestore(instance: string): Promise<void> {
     await Bun.sleep(1000);
   }
   throw new Error(`timed out waiting for ${instance} to stop before restore`);
-}
-
-type CommandRunner = typeof runAllowFailure;
-type RunRequiredCommand = (cmd: string[]) => Promise<string>;
-type RestoreCommandRunners = {
-  run?: CommandRunner;
-  runRequired?: RunRequiredCommand;
-  directoryHasEntries?: (path: string) => boolean;
-};
-
-function restoreCommandRunners(runners: RestoreCommandRunners): {
-  run: CommandRunner;
-  runRequired: RunRequiredCommand;
-  directoryHasEntries: (path: string) => boolean;
-} {
-  return {
-    run: runners.run ?? runAllowFailure,
-    runRequired: runners.runRequired ?? ((cmd) => runText(cmd, PREFIX)),
-    directoryHasEntries: runners.directoryHasEntries ?? directoryHasEntries
-  };
 }
 
 export async function assertNewRestoreTargetIsUnused(instance: string, targetDataset: string, runCommand: CommandRunner = runAllowFailure): Promise<void> {
@@ -131,10 +122,6 @@ async function handOffToLxdRecover(): Promise<void> {
   await runInteractive(["lxd", "recover"], PREFIX);
 }
 
-function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function lxdStorageRoot(pool: string): string {
   for (const root of ["/var/snap/lxd/common/lxd/storage-pools", "/var/lib/lxd/storage-pools"]) {
     const path = join(root, pool);
@@ -143,168 +130,6 @@ function lxdStorageRoot(pool: string): string {
     }
   }
   return join("/var/snap/lxd/common/lxd/storage-pools", pool);
-}
-
-function rewriteNameReferences(value: unknown, oldName: string, newName: string): { value: unknown; changed: boolean } {
-  if (typeof value === "string") {
-    if (value.includes(oldName)) {
-      return { value: value.replaceAll(oldName, newName), changed: true };
-    }
-    return { value, changed: false };
-  }
-
-  if (Array.isArray(value)) {
-    let changed = false;
-    const next = value.map((item) => {
-      const result = rewriteNameReferences(item, oldName, newName);
-      changed = result.changed || changed;
-      return result.value;
-    });
-    return { value: next, changed };
-  }
-
-  if (isRecord(value)) {
-    let changed = false;
-    const next: JsonRecord = {};
-    for (const [key, item] of Object.entries(value)) {
-      const result = rewriteNameReferences(item, oldName, newName);
-      changed = result.changed || changed;
-      next[key] = result.value;
-    }
-    return { value: next, changed };
-  }
-
-  return { value, changed: false };
-}
-
-function scrubGeneratedLxdIdentity(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => scrubGeneratedLxdIdentity(item));
-  }
-
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  const next: JsonRecord = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (key === "config" && isRecord(item)) {
-      next[key] = Object.fromEntries(Object.entries(item).filter(([configKey]) => !configKey.startsWith("volatile.")));
-      continue;
-    }
-
-    if (key === "devices" && isRecord(item)) {
-      next[key] = Object.fromEntries(
-        Object.entries(item).map(([deviceName, device]) => {
-          if (!isRecord(device)) {
-            return [deviceName, scrubGeneratedLxdIdentity(device)];
-          }
-          const scrubbedDevice = { ...device };
-          delete scrubbedDevice.hwaddr;
-          return [deviceName, scrubGeneratedLxdIdentity(scrubbedDevice)];
-        })
-      );
-      continue;
-    }
-
-    next[key] = scrubGeneratedLxdIdentity(item);
-  }
-
-  return next;
-}
-
-function scrubRestoreAsNewHostState(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => scrubRestoreAsNewHostState(item));
-  }
-
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  const next: JsonRecord = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (key === "config" && isRecord(item)) {
-      next[key] = Object.fromEntries(Object.entries(item).filter(([configKey]) => configKey !== "user.proxy"));
-      continue;
-    }
-
-    if (key === "devices" && isRecord(item)) {
-      next[key] = Object.fromEntries(
-        Object.entries(item)
-          .filter(([, device]) => !(isRecord(device) && device.type === "proxy"))
-          .map(([deviceName, device]) => [deviceName, scrubRestoreAsNewHostState(device)])
-      );
-      continue;
-    }
-
-    next[key] = scrubRestoreAsNewHostState(item);
-  }
-
-  return next;
-}
-
-export function rewriteRecoveredBackupMetadata(backup: JsonRecord, oldName: string, newName: string): JsonRecord {
-  const renamed = rewriteNameReferences(backup, oldName, newName);
-  if (!renamed.changed) {
-    throw new Error(`recovered LXD backup metadata did not reference source instance '${oldName}'`);
-  }
-  return scrubRestoreAsNewHostState(scrubGeneratedLxdIdentity(renamed.value)) as JsonRecord;
-}
-
-function rewriteBackupYaml(mountPath: string, oldName: string, newName: string): void {
-  const backupPath = join(mountPath, "backup.yaml");
-  if (!existsSync(backupPath)) {
-    throw new Error(`recovered LXD dataset is missing backup.yaml at ${backupPath}`);
-  }
-
-  const backup = parse(readFileSync(backupPath, "utf8")) as unknown;
-  if (!isRecord(backup)) {
-    throw new Error(`recovered LXD backup metadata is not an object: ${backupPath}`);
-  }
-
-  try {
-    writeFileSync(backupPath, stringify(rewriteRecoveredBackupMetadata(backup, oldName, newName)));
-  } catch (error) {
-    const message = String(error).replace(/^Error: /, "");
-    throw new Error(message.includes(backupPath) ? message : `${message}: ${backupPath}`);
-  }
-}
-
-function directoryHasEntries(path: string): boolean {
-  return existsSync(path) && readdirSync(path).length > 0;
-}
-
-export function prepareRootfsDirectoryForLxdRecover(mountPath: string): void {
-  const rootfsPath = join(mountPath, "rootfs");
-  if (directoryHasEntries(rootfsPath)) {
-    return;
-  }
-
-  const stagingPath = join(mountPath, ".terrarium-rootfs.tmp");
-  if (existsSync(stagingPath)) {
-    throw new Error(`temporary LXD rootfs staging path already exists: ${stagingPath}`);
-  }
-
-  mkdirSync(stagingPath);
-  for (const entry of readdirSync(mountPath)) {
-    if (entry === "backup.yaml" || entry === "rootfs" || entry === ".terrarium-rootfs.tmp") {
-      continue;
-    }
-    renameSync(join(mountPath, entry), join(stagingPath, entry));
-  }
-  if (!existsSync(rootfsPath)) {
-    renameSync(stagingPath, rootfsPath);
-  } else {
-    for (const entry of readdirSync(stagingPath)) {
-      renameSync(join(stagingPath, entry), join(rootfsPath, entry));
-    }
-    rmSync(stagingPath, { recursive: true, force: true });
-  }
-
-  if (!directoryHasEntries(rootfsPath)) {
-    throw new Error(`recovered LXD dataset is missing rootfs contents at ${rootfsPath}`);
-  }
 }
 
 async function prepareDatasetForLxdRecover(pool: string, targetDataset: string, oldName: string, newName: string): Promise<string> {
@@ -382,47 +207,6 @@ export function rollbackSnapshotsForDatasetTree(snapshot: string, availableSnaps
   return [...descendants, snapshot];
 }
 
-async function rollbackDatasetTreeToSnapshot(snapshot: string): Promise<void> {
-  const snapshotMarker = snapshot.indexOf("@");
-  if (snapshotMarker === -1) {
-    throw new Error(`invalid ZFS snapshot name: ${snapshot}`);
-  }
-
-  const dataset = snapshot.slice(0, snapshotMarker);
-  const snapshots = await runText(["zfs", "list", "-H", "-t", "snapshot", "-o", "name", "-r", dataset], PREFIX);
-  for (const item of rollbackSnapshotsForDatasetTree(snapshot, snapshots.split("\n"))) {
-    await runText(["zfs", "rollback", "-r", item], PREFIX);
-  }
-}
-
-export async function mountRootfsDatasetForLxdRecover(
-  rootfsDataset: string,
-  rootfsPath: string,
-  runners: RestoreCommandRunners = {}
-): Promise<void> {
-  const { run, runRequired, directoryHasEntries: hasEntries } = restoreCommandRunners(runners);
-  await runRequired(["mkdir", "-p", rootfsPath]);
-  await run(["zfs", "unmount", rootfsDataset]);
-  await runRequired(["zfs", "set", `mountpoint=${rootfsPath}`, rootfsDataset]);
-  const rootfsMount = await run(["zfs", "mount", rootfsDataset]);
-  if (rootfsMount.exitCode !== 0 && !`${rootfsMount.stderr}\n${rootfsMount.stdout}`.toLowerCase().includes("already mounted")) {
-    throw new Error(`failed to mount recovered rootfs dataset at ${rootfsPath}: ${rootfsMount.stderr.trim() || rootfsMount.stdout.trim()}`);
-  }
-
-  if (!hasEntries(rootfsPath)) {
-    const datasetState = await run(["zfs", "get", "-H", "-o", "property,value", "mounted,mountpoint,canmount", rootfsDataset]);
-    throw new Error(
-      [
-        `recovered LXD rootfs dataset is mounted but missing contents at ${rootfsPath}`,
-        datasetState.stdout.trim() ? `zfs state:\n${datasetState.stdout.trim()}` : "",
-        datasetState.stderr.trim() ? `zfs stderr:\n${datasetState.stderr.trim()}` : ""
-      ]
-        .filter(Boolean)
-        .join("\n\n")
-    );
-  }
-}
-
 export async function cloneRootfsSnapshotIfPresent(
   sourceDataset: string,
   snapshot: string,
@@ -471,55 +255,6 @@ async function recoverAsNewInstance(pool: string, sourceName: string, targetData
   }
 }
 
-/** Finds the newest snapshot that matches the requested dataset and optional selector. */
-async function findSnapshot(dataset: string, query = ""): Promise<string> {
-  const stdout = await runText(["zfs", "list", "-H", "-t", "snapshot", "-o", "name", "-s", "creation"], PREFIX);
-  let match = "";
-  for (const line of stdout.split("\n")) {
-    if (line.startsWith(`${dataset}@`) && (!query || line.includes(query))) {
-      match = line.trim();
-    }
-  }
-  return match;
-}
-
-/** Restores a local ZFS snapshot either in-place or into a new importable dataset. */
-async function restoreLocal(
-  instance: string,
-  at: string,
-  mode: "in-place" | "as-new",
-  newName: string,
-  pool: string
-): Promise<void> {
-  const dataset = `${pool}/containers/${instance}`;
-  const snapshot = await findSnapshot(dataset, at);
-  if (!snapshot) {
-    throw new Error(at ? `no local snapshot matched '${at}'` : `no local snapshots found for '${instance}'`);
-  }
-
-  if (mode === "in-place") {
-    await confirmDestructive(`Rollback ${instance} in place to ${snapshot}?`);
-    await stopInstanceForRestore(instance);
-    await rollbackDatasetTreeToSnapshot(snapshot);
-    console.log(success(`Rolled back ${instance} to ${snapshot}`));
-    console.log(`${label("Next:")} ${value(`lxc start ${instance}`)}`);
-    return;
-  }
-
-  if (!newName) {
-    throw new Error("--as-new requires a target name");
-  }
-
-  const targetDataset = `${pool}/containers/${newName}`;
-  await assertNewRestoreTargetIsUnused(newName, targetDataset);
-  const targetMountPath = join(lxdStorageRoot(pool), "containers", newName);
-  await runText(["mkdir", "-p", targetMountPath], PREFIX);
-  await runText(["zfs", "clone", "-o", `mountpoint=${targetMountPath}`, snapshot, targetDataset], PREFIX);
-  await cloneRootfsSnapshotIfPresent(dataset, snapshot, targetDataset, targetMountPath);
-  console.log(success(`Cloned ${snapshot} to ${targetDataset}`));
-  await recoverAsNewInstance(pool, instance, targetDataset, newName);
-}
-
 /** Restores an S3-backed dataset chain either in-place or into a new importable dataset. */
 async function restoreS3(
   instance: string,
@@ -528,10 +263,10 @@ async function restoreS3(
   newName: string,
   pool: string
 ): Promise<void> {
-  const target = mode === "in-place" ? `${pool}/containers/${instance}` : `${pool}/containers/${newName}`;
+  const root = await physicalZfsRoot(pool);
+  const target = mode === "in-place" ? `${root}/containers/${instance}` : `${root}/containers/${newName}`;
   if (mode === "in-place") {
     await confirmDestructive(`Reconstruct ${instance} in place into ${target}?`);
-    await stopInstanceForRestore(instance);
   } else if (!newName) {
     throw new Error("--as-new requires a target name");
   }
@@ -540,7 +275,8 @@ async function restoreS3(
     await assertNewRestoreTargetIsUnused(newName, target);
   }
 
-  await reconstructFromS3(instance, at, target);
+  await reconstructFromS3(instance, at, target, undefined, mode === "in-place" ? () => stopInstanceForRestore(instance) : undefined);
+  if (mode === "in-place") await mountRecoveredDataset(target, join(lxdStorageRoot(pool), "containers", instance));
   if (mode === "in-place") {
     console.log(success(`Reconstructed dataset for ${instance} into ${target}`));
     console.log(`${label("Next:")} ${value(`lxc start ${instance}`)}`);
@@ -565,6 +301,11 @@ export async function backupActionCmd(
     return;
   }
 
+  if (action === "replicate") {
+    await replicateBackupSets(requireConfig());
+    return;
+  }
+
   if (action === "export") {
     await backupExportCmd();
     return;
@@ -581,17 +322,18 @@ export async function backupActionCmd(
   if (!instance) {
     throw new Error("backup restore requires --instance; --source defaults to local, --at defaults to the latest restore point, and --as-new is optional");
   }
+  for (const name of [instance, newName].filter(Boolean)) if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(name)) throw new Error(`Invalid LXD instance name: ${name}`);
 
   const config = requireConfig();
   const pool = configString(config, "terrarium_lxd_pool_name", "terrarium");
   const mode = newName ? "as-new" : "in-place";
 
   if (source === "local") {
-    await restoreLocal(instance, at, mode, newName, pool);
+    await restoreLocalSet(instance, at, newName, pool);
     return;
   }
   if (source === "s3") {
-    await restoreS3(instance, at, mode, newName, pool);
+    if (!(await restoreS3Set(config, instance, at, newName, pool))) await withBackupLock(() => restoreS3(instance, at, mode, newName, pool));
     return;
   }
 

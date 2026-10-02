@@ -132,3 +132,7 @@ Terrarium is designed to be non-disruptive. When you change a setting:
 - IDP changes re-render and restart the `oauth2-proxy` without dropping active container traffic.
 - Local ZITADEL or Logto settings are updated inside the managed `terrarium-idp` system instance when local IDP mode is enabled.
 - Terrarium automatically runs `terrariumctl proxy sync` to ensure all your published apps reflect the new domains and authentication rules.
+
+## VM profiles and backups
+
+Reconfiguration installs or refreshes `vm`, `vm-dev` and the managed ingress profile alongside the container profiles. Keep local customizations in separate profiles. Existing instances keep their type; applying a VM profile cannot convert a container into a VM. Backup configuration resolves each member’s physical ZFS dataset independently of the LXD pool label and includes complete VM snapshot sets.

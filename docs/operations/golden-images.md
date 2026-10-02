@@ -76,3 +76,9 @@ Use golden images for:
 
 Use backups instead when you need to recover an existing container's history or
 export data off the server.
+
+## VM images
+
+The same commands accept Linux VMs. The temporary VM copy boots under a deny-all OVN policy to prepare fresh machine and SSH identities, then resets cloud-init and stops before publication. The source remains unchanged. Host-bound disks and proxy devices are removed from the copy, including inherited devices.
+
+`trm image launch app-vm-base app-vm-copy --wait` detects the image's VM type and chooses the `vm` profile. Use `--profile vm-dev` for passwordless sudo. Image launches support all the provisioning flags available to `trm launch`, plus `--target`, `--wait`, and `--timeout`. See [Linux virtual machines](../getting-started/virtual-machines.md).

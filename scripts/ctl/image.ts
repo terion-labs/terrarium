@@ -1,9 +1,9 @@
 import { heading, label, success, value } from "./context";
-import { runAllowFailure, runInteractive, runText } from "../lib/common";
+import { runAllowFailure, runInteractive } from "../lib/common";
 import { launchCmd, LaunchOptions } from "./launch";
+import { lxcArgs, lxcCommand, readInstance, isInfrastructureInstance } from "../lib/lxd-instance";
+import { sanitizeInstanceHostState, quarantineVm, prepareVmGuestIdentity } from "../lib/guest-identity";
 import { PREFIX } from "./context";
-
-const LXC = process.env.TERRARIUM_LXC_BIN ?? "/snap/bin/lxc";
 
 export type ImageCreateOptions = {
   snapshot?: string;
@@ -23,11 +23,6 @@ export type ImageCreatePlan = {
 type ImageCreateIdentity = {
   now?: number;
   pid?: number;
-};
-
-type LxdConfig = {
-  config?: Record<string, string>;
-  devices?: Record<string, { type?: string }>;
 };
 
 function requireName(value: string, labelName: string): string {
@@ -66,7 +61,7 @@ export function buildImageCreatePlan(
   const snapshotToCreate = snapshot || options.live ? undefined : `terrarium-golden-${now}`;
   const source = snapshot ? `${instance}/${snapshot}` : options.live ? instance : `${instance}/${snapshotToCreate}`;
   const tempInstance = `terrarium-image-${slugify(alias)}-${pid}-${now}`;
-  const publishArgs = [LXC, "publish", tempInstance, "--alias", alias];
+  const publishArgs = lxcArgs("publish", tempInstance, "--alias", alias);
   if (options.reuse) {
     publishArgs.push("--reuse");
   }
@@ -81,62 +76,38 @@ export function buildImageCreatePlan(
   };
 }
 
-async function readLxdConfig(instance: string): Promise<LxdConfig> {
-  const raw = await runText([LXC, "config", "show", instance, "--format=json"], PREFIX);
-  try {
-    return JSON.parse(raw || "{}") as LxdConfig;
-  } catch (error) {
-    throw new Error(`failed to parse LXD config for temporary image source ${instance}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-function proxyDeviceNames(config: LxdConfig): string[] {
-  return Object.entries(config.devices ?? {})
-    .filter(([, device]) => device?.type === "proxy")
-    .map(([name]) => name);
-}
-
-async function sanitizeImageSource(instance: string): Promise<void> {
-  const before = await readLxdConfig(instance);
-  if ((before.config?.["user.proxy"] ?? "").trim()) {
-    await runText([LXC, "config", "unset", instance, "user.proxy"], PREFIX);
-  }
-  for (const device of proxyDeviceNames(before)) {
-    await runText([LXC, "config", "device", "remove", instance, device], PREFIX);
-  }
-
-  const after = await readLxdConfig(instance);
-  const inheritedProxyLabel = (after.config?.["user.proxy"] ?? "").trim();
-  if (inheritedProxyLabel) {
-    throw new Error(`temporary image source ${instance} still has user.proxy after sanitization`);
-  }
-  const inheritedProxyDevices = proxyDeviceNames(after);
-  if (inheritedProxyDevices.length > 0) {
-    throw new Error(`temporary image source ${instance} still has proxy devices after sanitization: ${inheritedProxyDevices.join(", ")}`);
-  }
-}
-
 export async function imageCreateCmd(instance: string, alias: string, options: ImageCreateOptions = {}): Promise<void> {
   const plan = buildImageCreatePlan(instance, alias, options);
+  const sourceInstance = await readInstance(instance);
+  if (isInfrastructureInstance(sourceInstance)) throw new Error("Ingress helpers cannot be published as workload images");
   let createdTemp = false;
   let createdSnapshot = false;
 
   try {
     if (plan.snapshotToCreate) {
-      await runText([LXC, "snapshot", plan.instance, plan.snapshotToCreate], PREFIX);
+      await lxcCommand(["snapshot", plan.instance, plan.snapshotToCreate]);
       createdSnapshot = true;
     }
 
-    await runText([LXC, "copy", plan.source, plan.tempInstance], PREFIX);
+    await lxcCommand(["copy", plan.source, plan.tempInstance], { timeoutMs: 30 * 60_000 });
     createdTemp = true;
-    await sanitizeImageSource(plan.tempInstance);
-    await runInteractive(plan.publishArgs, PREFIX);
+    await lxcCommand(["config", "set", plan.tempInstance, "user.terrarium.role=image-staging", "boot.autostart=false", "cluster.evacuate=stop"]);
+    await sanitizeInstanceHostState(plan.tempInstance);
+    if (sourceInstance.type === "virtual-machine") {
+      const cloudId = sourceInstance.config["volatile.cloud-init.instance-id"];
+      if (cloudId) await lxcCommand(["config", "set", plan.tempInstance, `volatile.cloud-init.instance-id=${cloudId}`]);
+      const saved = await quarantineVm(await readInstance(plan.tempInstance));
+      await prepareVmGuestIdentity(plan.tempInstance, true, saved);
+    }
+    await lxcCommand(plan.publishArgs.slice(3), { timeoutMs: 30 * 60_000 });
   } finally {
     if (createdTemp) {
-      await runAllowFailure([LXC, "delete", plan.tempInstance, "--force"]);
+      const removed = await runAllowFailure(lxcArgs("delete", plan.tempInstance, "--force"));
+      if (removed.exitCode !== 0) console.warn(`Could not remove temporary image instance ${plan.tempInstance}: ${removed.stderr.trim()}`);
     }
     if (createdSnapshot && plan.snapshotToCreate) {
-      await runAllowFailure([LXC, "delete", `${plan.instance}/${plan.snapshotToCreate}`]);
+      const removed = await runAllowFailure(lxcArgs("delete", `${plan.instance}/${plan.snapshotToCreate}`));
+      if (removed.exitCode !== 0) console.warn(`Could not remove temporary image snapshot ${plan.instance}/${plan.snapshotToCreate}: ${removed.stderr.trim()}`);
     }
   }
 
@@ -146,7 +117,7 @@ export async function imageCreateCmd(instance: string, alias: string, options: I
 
 export async function imageListCmd(): Promise<void> {
   console.log(heading("LXD images"));
-  await runInteractive([LXC, "image", "list"], PREFIX);
+  await runInteractive(lxcArgs("image", "list"), PREFIX);
 }
 
 export async function imageLaunchCmd(alias: string, name: string, options: LaunchOptions = {}): Promise<void> {
@@ -155,5 +126,5 @@ export async function imageLaunchCmd(alias: string, name: string, options: Launc
 
 export async function imageDeleteCmd(aliasArg: string): Promise<void> {
   const alias = requireName(aliasArg, "image alias");
-  await runInteractive([LXC, "image", "delete", alias], PREFIX);
+  await runInteractive(lxcArgs("image", "delete", alias), PREFIX);
 }

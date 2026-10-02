@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { parse, stringify } from "yaml";
+import { spawn } from "node:child_process";
 import { readConfigYaml } from "./config-store";
 
 export type JsonRecord = Record<string, unknown>;
@@ -90,7 +91,7 @@ export function yamlStringify(value: unknown): string {
   return stringify(value);
 }
 
-type CommandOptions = { cwd?: string; stdin?: string | Uint8Array; env?: Record<string, string> };
+export type CommandOptions = { cwd?: string; stdin?: string | Uint8Array; env?: Record<string, string>; timeoutMs?: number };
 type CommandResult = { exitCode: number; stdout: string; stderr: string };
 
 function commandEnv(extra: Record<string, string> | undefined): Record<string, string> | undefined {
@@ -121,6 +122,7 @@ async function readStream(stream: ReadableStream<Uint8Array> | null): Promise<st
  * between fail-fast behavior and explicit exit-code handling.
  */
 async function shellCommand(cmd: string[], options: CommandOptions = {}): Promise<CommandResult> {
+  if (options.timeoutMs !== undefined) return boundedCommand(cmd, options);
   const proc = Bun.spawn({
     cmd,
     cwd: options.cwd,
@@ -131,18 +133,57 @@ async function shellCommand(cmd: string[], options: CommandOptions = {}): Promis
   });
   const stdout = readStream(proc.stdout);
   const stderr = readStream(proc.stderr);
-
-  if (options.stdin !== undefined) {
-    const stdin = proc.stdin as { write(input: string | Uint8Array): unknown; end(): unknown } | undefined;
-    if (!stdin) {
-      throw new Error(`failed to open stdin pipe for command: ${cmd.join(" ")}`);
+  try {
+    if (options.stdin !== undefined) {
+      const stdin = proc.stdin as { write(input: string | Uint8Array): unknown; end(): unknown } | undefined;
+      if (!stdin) throw new Error(`failed to open stdin pipe for command: ${cmd[0]}`);
+      await stdin.write(options.stdin);
+      await stdin.end();
     }
-    await stdin.write(options.stdin);
-    await stdin.end();
-  }
 
-  const [exitCode, stdoutText, stderrText] = await Promise.all([proc.exited, stdout, stderr]);
-  return { exitCode, stdout: stdoutText, stderr: stderrText };
+    const [exitCode, stdoutText, stderrText] = await Promise.all([proc.exited, stdout, stderr]);
+    return { exitCode, stdout: stdoutText, stderr: stderrText };
+  } catch (error) {
+    proc.kill("SIGKILL");
+    await Promise.allSettled([proc.exited, stdout, stderr]);
+    throw error;
+  }
+}
+
+/** Kill the whole probe process group so a child holding stdout cannot defeat the deadline. */
+function boundedCommand(cmd: string[], options: CommandOptions): Promise<CommandResult> {
+  return new Promise((resolve) => {
+    const output: Buffer[] = [];
+    const errors: Buffer[] = [];
+    const grouped = process.platform !== "win32";
+    const proc = spawn(cmd[0]!, cmd.slice(1), {
+      cwd: options.cwd, env: commandEnv(options.env), detached: grouped,
+      stdio: [options.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"]
+    });
+    let settled = false;
+    const finish = (exitCode: number, detail?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ exitCode, stdout: Buffer.concat(output).toString(), stderr: [Buffer.concat(errors).toString(), detail].filter(Boolean).join("\n") });
+    };
+    const timer = setTimeout(() => {
+      if (grouped && proc.pid) {
+        try { process.kill(-proc.pid, "SIGKILL"); } catch { proc.kill("SIGKILL"); }
+      } else proc.kill("SIGKILL");
+      proc.stdin?.destroy();
+      proc.stdout?.destroy();
+      proc.stderr?.destroy();
+      finish(124, `command timed out after ${options.timeoutMs}ms`);
+    }, options.timeoutMs);
+    proc.stdout?.on("data", (chunk: Buffer) => output.push(chunk));
+    proc.stderr?.on("data", (chunk: Buffer) => errors.push(chunk));
+    proc.on("error", (error) => finish(127, error.message));
+    proc.on("close", (code) => finish(code ?? 1));
+    // A command may exit without reading its input. Its exit status is authoritative.
+    proc.stdin?.on("error", () => {});
+    if (options.stdin !== undefined) proc.stdin?.end(options.stdin);
+  });
 }
 
 /** Runs a command and returns stdout, failing the process if it exits non-zero. */
@@ -188,6 +229,15 @@ export async function runShell(command: string, prefix: string, options: { cwd?:
 
 /** Runs a subprocess with inherited stdio for fully interactive flows. */
 export async function runInteractive(cmd: string[], prefix: string, options: { cwd?: string } = {}): Promise<void> {
+  try {
+    await runInteractiveChecked(cmd, options);
+  } catch (error) {
+    fail(prefix, error instanceof Error ? error.message : String(error));
+  }
+}
+
+/** Interactive execution that preserves a caller's cleanup and recovery error handling. */
+export async function runInteractiveChecked(cmd: string[], options: { cwd?: string } = {}): Promise<void> {
   const proc = Bun.spawn({
     cmd,
     cwd: options.cwd,
@@ -197,7 +247,7 @@ export async function runInteractive(cmd: string[], prefix: string, options: { c
   });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
-    fail(prefix, `command failed: ${cmd.join(" ")}`);
+    throw new Error(`command failed: ${cmd.join(" ")}`);
   }
 }
 

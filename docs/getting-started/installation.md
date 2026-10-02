@@ -1,6 +1,6 @@
 # Installation
 
-Ready to turn your plain Ubuntu VPS into a hardened, LXD-powered container host? The Terrarium installer makes it quick and easy.
+Ready to turn your plain Ubuntu VPS into a hardened, LXD-powered container and VM host? The Terrarium installer makes it quick and easy.
 
 ## Requirements
 
@@ -175,3 +175,7 @@ From there, the main commands you will use are:
 - `terrariumctl backup ...`
 
 For full command details, see [terrariumctl Reference](../reference/terrariumctl.md).
+
+## VM host requirements
+
+Installing Terrarium does not require VM support. To run Linux VMs, the host must expose hardware virtualization to LXD, including `/dev/kvm`. On a cloud VM this requires nested virtualization from the provider. Check `trm status` on the actual host; a provider or instance-family name alone does not prove support. Managed profiles `vm` and `vm-dev` are installed and updated alongside the container profiles. See [virtual machines](./virtual-machines.md).

@@ -475,3 +475,17 @@ Public ports: `22/tcp` (key-only SSH), `80/tcp`, `443/tcp`, plus any `tcp://` or
 - Architecture: https://terrarium.terion.name/architecture
 - Guides (OpenClaw, Hermes, code-server, Compose, Dokploy, Coolify, OIDC): https://terrarium.terion.name/guides/
 - Providers (DigitalOcean, Hetzner, Vultr, Hostinger): https://terrarium.terion.name/providers/
+
+## Native Linux VMs
+
+Use `trm launch ubuntu:24.04 NAME --vm --wait` or Ubuntu 26.04. `--target MEMBER` chooses placement; the member must advertise VM support for the image architecture. `--timeout SECONDS` bounds agent/cloud-init readiness (default 300). VM defaults are 2 CPUs, 2 GiB RAM, and 20 GiB root storage. Select `vm-dev` for passwordless sudo; container profiles, including `kvm`, are incompatible with `--vm`.
+
+Both launch entry points accept the same provisioning, variable, resource, and route options. Local golden VM images infer type without `--vm`. Use `trm exec NAME` for the terrarium user and `--root` explicitly. If the agent cannot connect, inspect `lxc console NAME` and cloud-init; never replay an ambiguous user command automatically.
+
+VM service listeners must bind to a guest network interface, not only loopback. Existing `user.proxy` HTTP/HTTPS/TCP/UDP/auth labels work unchanged. Host-local `terrarium-ingress-*` helper containers provide the OVN path; leave these infrastructure instances out of workload operations.
+
+A VM backup is a metadata filesystem plus a block volume from one atomic snapshot. Use `trm backup restore` for reconstruction, `--as-new` for a separate copy, and `--source s3` for off-host restore. Versioned S3 chains carry checksums and source identity; retain every referenced parent and component. In-place restore retains previous disks and asks before replacement. LXD recovery remains interactive. New VM copies prepare guest identities in network quarantine before normal use.
+
+`trm mount attach HOST_PATH VM /guest/path` supports directories and CIFS through LXD, using the terrarium guest UID/GID. Ownership changes cannot disrupt existing share consumers. Prefer `--instance`/`--instance-path`; old container flag names remain aliases. Detach host-bound devices before `trm cluster move VM MEMBER`. Movement preflights capability, architecture and storage, then uses bounded graceful shutdown; a stop failure does not authorize forced power off.
+
+See https://terrarium.terion.name/getting-started/virtual-machines for the full operator workflow.

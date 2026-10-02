@@ -36,7 +36,7 @@ const commands = [
 ];
 
 const actions: Record<string, string[]> = {
-  backup: ["list", "export", "restore"],
+  backup: ["list", "export", "replicate", "restore"],
   image: ["create", "list", "launch", "delete"],
   config: ["import", "export"],
   cluster: ["status", "init", "invite", "token", "join", "evacuate", "restore", "move", "remove", "ovn"],
@@ -93,6 +93,7 @@ const optionGroups: Record<string, string[]> = {
   backup: ["--source", "--instance", "--at", "--as-new"],
   update: ["--ref", "--skip-reconfigure", "--non-interactive"],
   launch: [
+    "--vm", "--target", "--wait", "--timeout", "--var", "--vars",
     "--profile",
     "--disk",
     "--memory",
@@ -104,7 +105,7 @@ const optionGroups: Record<string, string[]> = {
     "--cloud-init",
     "--proxy"
   ],
-  image: ["--snapshot", "--live", "--reuse", "--profile", "--disk", "--memory", "--cpu", "--proxy"],
+  image: ["--snapshot", "--live", "--reuse", "--vm", "--target", "--wait", "--timeout", "--profile", "--disk", "--memory", "--cpu", "--proxy", "--requirements", "--playbook", "--role", "--docker-compose", "--cloud-init", "--var", "--vars"],
   exec: ["--root", "--user"],
   cluster: [
     "--member",
@@ -139,6 +140,7 @@ const optionGroups: Record<string, string[]> = {
     "--container",
     "--instance",
     "--container-path",
+    "--instance-path",
     "--device"
   ],
   idp: ["--source", "--at", "--as-new", "--lines"],

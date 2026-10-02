@@ -1,6 +1,6 @@
 # Terrarium
 
-> Terrarium turns a fresh Ubuntu VPS into a hardened host for isolated LXD system containers on ZFS, with automatic snapshots, S3 backups, Traefik routing from container labels, and OIDC single sign-on.
+> Terrarium turns a fresh Ubuntu VPS into a hardened host for isolated LXD system containers and Linux cloud-image VMs on ZFS, with automatic snapshots, S3 backups, Traefik routing from container labels, and OIDC single sign-on.
 
 ## For agents
 
@@ -14,3 +14,5 @@
 - [Backups and restore](https://terrarium.terion.name/operations/backups-and-restore)
 - [terrariumctl reference](https://terrarium.terion.name/reference/terrariumctl)
 - [Guides](https://terrarium.terion.name/guides/)
+
+- [Linux virtual machines](https://terrarium.terion.name/getting-started/virtual-machines): VM profiles, launch/readiness, UI/console, routing, mounts, complete backup sets, recovery, and cluster moves.

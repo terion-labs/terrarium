@@ -1,10 +1,12 @@
 # Templating Containers with `trm launch`
 
-`trm launch` is the fastest way to turn a fresh LXD container into a real application environment.
+`trm launch` is the fastest way to turn a fresh LXD instance into a real application environment.
 
-It wraps `lxc launch`, so simple containers still feel familiar. When you add provisioning flags, Terrarium generates a small cloud-init template for the container, embeds or fetches the files you asked for, and runs the setup inside the new instance.
+It wraps `lxc launch`, so simple instances still feel familiar. When you add provisioning flags, Terrarium generates a small cloud-init template for the container, embeds or fetches the files you asked for, and runs the setup inside the new instance.
 
 Use it when you want a container to come up already shaped like an app server, agent sandbox, Docker Compose stack, or Ansible-managed machine.
+
+For Linux VMs, add `--vm`; the default profile becomes `vm`. Use `--profile vm-dev` for passwordless sudo. All playbook, role, Compose, variable, cloud-init and proxy options below also apply to VMs. Add `--wait --timeout 600` to wait for the agent and successful provisioning. See [virtual machines](./virtual-machines.md).
 
 ## 1. Start with a Normal Container
 

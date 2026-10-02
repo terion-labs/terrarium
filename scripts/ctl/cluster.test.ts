@@ -176,6 +176,17 @@ describe("terrariumctl cluster", () => {
     expect(memoryLoadFromResourcesJson(JSON.stringify({ memory: { used: 512, total: 1024 } }))).toEqual({ used: 512, total: 1024 });
   });
 
+  test("never plans a VM move to a container-only member or another architecture", () => {
+    const workload = { name: "vm", type: "virtual-machine" as const, architecture: "x86_64" };
+    const candidates = [
+      { member: "container-only", workloadCount: 0, plannedWorkloadCount: 0, vmAvailable: false, architectures: ["x86_64"] },
+      { member: "arm", workloadCount: 0, plannedWorkloadCount: 0, vmAvailable: true, architectures: ["aarch64"] },
+      { member: "compatible", workloadCount: 5, plannedWorkloadCount: 5, vmAvailable: true, architectures: ["x86_64"] }
+    ];
+    expect(buildWorkloadMovePlan([workload], candidates)[0]?.target).toBe("compatible");
+    expect(() => buildWorkloadMovePlan([workload], candidates.slice(0, 2))).toThrow("No eligible");
+  });
+
   test("selects private non-LXD host addresses for cluster defaults", () => {
     const candidates = addressCandidatesFromIpJson(
       JSON.stringify([

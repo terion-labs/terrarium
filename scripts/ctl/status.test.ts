@@ -12,6 +12,11 @@ function active(stdout = "active\n"): CommandResult {
 }
 
 describe("terrariumctl status local IDP runtime", () => {
+  test("distinguishes a failed backup from a service that never ran", async () => {
+    const lines: string[] = [];
+    await statusCmd({ config: { terrarium_idp_mode: "oidc" }, activeConfigStore: () => "test", log: (message) => lines.push(stripAnsi(message)), runAllowFailure: async (cmd) => active(cmd.includes("show") ? "Id=terrarium-s3-backup.service\nResult=exit-code\nExecMainStartTimestamp=Fri 2026-10-02 07:00:00 UTC\n\nId=terrarium-syncoid.service\nResult=success\nExecMainStartTimestamp=\n" : "") });
+    expect(lines.join("\n")).toContain("terrarium-s3-backup.service: exit-code; terrarium-syncoid.service: not run");
+  });
   test("prints local ZITADEL labels, bootstrap command, and service status", async () => {
     const commands: string[][] = [];
     const lines: string[] = [];

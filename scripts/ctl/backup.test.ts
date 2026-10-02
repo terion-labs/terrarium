@@ -13,6 +13,14 @@ import {
 import { chooseLatestExportSnapshot, isRetriableS3ExportError, planS3SnapshotExport, zfsReplicationSendCommand } from "../terrarium-s3-export";
 
 describe("backup restore metadata", () => {
+  test("preserves VM firmware and provisioning state without rewriting application or profile data", () => {
+    const source = { version: 2, instance: { name: "source", config: { "volatile.uuid": "old", "volatile.cloud-init.instance-id": "provisioned-id", "volatile.eth0.bus": "0000:06:00.0", "user.application": "source" }, devices: {} }, profiles: [{ name: "source", config: { "user.proxy": "keep-profile-value" } }], volumes: [{ name: "source", created_at: "2026-10-02T02:04:06.123456789Z" }] };
+    const restored = rewriteRecoveredBackupMetadata(source, "source", "clone");
+    expect(restored.instance).toEqual({ name: "clone", config: { "volatile.cloud-init.instance-id": "provisioned-id", "volatile.eth0.bus": "0000:06:00.0", "user.application": "source" }, devices: {} });
+    expect(restored.profiles).toEqual(source.profiles);
+    expect(restored.volumes).toEqual([{ name: "clone", created_at: "2026-10-02T02:04:06.123456789Z" }]);
+    expect(source.instance.name).toBe("source");
+  });
   test("classifies transient S3 export errors for retry", () => {
     expect(
       isRetriableS3ExportError(

@@ -1,3 +1,4 @@
+import { lxcArgs, parseVmCapability, parseInstance, isInfrastructureInstance } from "../lib/lxd-instance";
 import {
   activeConfigStore,
   adminGroup,
@@ -19,7 +20,7 @@ type StatusCommandDeps = {
   config?: MutableConfig;
   requireConfig?: () => MutableConfig;
   activeConfigStore?: () => string;
-  runAllowFailure?: (cmd: string[]) => Promise<CommandResult>;
+  runAllowFailure?: typeof runAllowFailure;
   log?: (message: string) => void;
 };
 
@@ -56,10 +57,45 @@ export async function statusCmd(deps: StatusCommandDeps = {}): Promise<void> {
   const syncoidTimer = await run(["systemctl", "is-active", "terrarium-syncoid.timer"]);
   const traefikSyncTimer = await run(["systemctl", "is-active", "terrarium-traefik-sync.timer"]);
 
+  const capabilities = await run(lxcArgs("query", "/1.0"), { timeoutMs: 15_000 });
+  let vmStatus = "unavailable: LXD could not be inspected";
+  let member = "";
+  let clustered = false;
+  if (capabilities.exitCode === 0) {
+    try {
+      const host = parseVmCapability(JSON.parse(capabilities.stdout));
+      vmStatus = host.available ? `available (${host.architectures.join(", ")})` : host.reason;
+      member = host.member;
+      clustered = host.clustered;
+    } catch { vmStatus = "unknown: LXD returned invalid capability information"; }
+  }
+  const instanceResult = await run(lxcArgs("query", "/1.0/instances?recursion=1&project=default"), { timeoutMs: 15_000 });
+  let workloadStatus = "unavailable";
+  let ingressStatus = "not needed yet";
+  if (instanceResult.exitCode === 0) {
+    try {
+      const raw: unknown = JSON.parse(instanceResult.stdout);
+      if (!Array.isArray(raw)) throw new Error("Invalid instance list");
+      const local = raw.map(parseInstance).filter((instance) => !clustered || instance.location === member);
+      const workloads = local.filter((instance) => !isInfrastructureInstance(instance));
+      workloadStatus = `${workloads.filter((instance) => instance.type === "container").length} containers, ${workloads.filter((instance) => instance.type === "virtual-machine").length} VMs`;
+      const helper = local.find(isInfrastructureInstance);
+      if (helper) ingressStatus = `${helper.name}: ${helper.status.toLowerCase()}`;
+    } catch { workloadStatus = "unknown: invalid LXD instance information"; }
+  }
+  const backupResult = await run(["systemctl", "show", "terrarium-s3-backup.service", "terrarium-syncoid.service", "--property=Id,Result,ExecMainStartTimestamp", "--no-pager"]);
+
   log(heading("Terrarium status"));
   log(`  ${label("Config store:")} ${value((deps.activeConfigStore ?? activeConfigStore)())}`);
   log(`  ${label("Config export:")} ${value("/etc/terrarium/config.yaml (run terrariumctl config export)")}`);
   log(`  ${label("Pool:")} ${value(pool)}`);
+  log(`  ${label("VM support:")} ${value(vmStatus)}`);
+  log(`  ${label("Local workloads:")} ${value(workloadStatus)}`);
+  log(`  ${label("OVN ingress:")} ${value(ingressStatus)}`);
+  if (backupResult.exitCode === 0 && backupResult.stdout.includes("Result=")) {
+    const results = backupResult.stdout.trim().split(/\n\s*\n/).map((block) => Object.fromEntries(block.split("\n").map((line) => { const at = line.indexOf("="); return [line.slice(0, at), line.slice(at + 1)]; })));
+    log(`  ${label("Last backup results:")} ${value(results.map((service) => `${service.Id}: ${service.ExecMainStartTimestamp ? service.Result : "not run"}`).join("; "))}`);
+  }
   log(`  ${label("Cockpit:")} ${value(`https://${manage}`)}`);
   log(`  ${label("Traefik dashboard:")} ${value(`https://${proxy}`)}`);
   log(`  ${label("LXD:")} ${value(`https://${lxd}`)}`);

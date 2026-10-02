@@ -12,6 +12,8 @@ function writeFakeLxc(path: string): void {
     path,
     `#!/bin/sh
 printf '%s\\n' "$*" >> "$TERRARIUM_LXC_LOG"
+if [ "$1" = --project ]; then shift 2; fi
+if [ "$1" = query ] && [ "$2" = "/1.0/instances/web-01?project=default" ]; then printf '{"name":"web-01","type":"container","config":{},"devices":{}}\\n'; exit 0; fi
 if [ "$1" = "snapshot" ] || [ "$1" = "copy" ] || [ "$1" = "delete" ]; then
   exit 0
 fi
@@ -19,7 +21,16 @@ if [ "$1" = "publish" ]; then
   printf 'publish reached\\n' >> "$TERRARIUM_LXC_LOG"
   exit 0
 fi
-if [ "$1" = "config" ] && [ "$2" = "show" ]; then
+if [ "$1" = "query" ]; then
+  if [ "$TERRARIUM_LXC_MODE" = inherited-profile ]; then
+    case "$2" in
+      /1.0/profiles/route*) printf '{"config":{"user.proxy":"https://leaked.example.test"}}'; exit 0 ;;
+      /1.0/profiles/*) printf '{"config":{}}'; exit 0 ;;
+    esac
+    if [ -f "$TERRARIUM_LXC_LOG.state" ]; then cat "$TERRARIUM_LXC_LOG.state"; exit 0; fi
+    printf '{"name":"temporary","type":"container","config":{},"expanded_config":{"user.proxy":"https://leaked.example.test","limits.cpu":"2"},"devices":{},"profiles":["vm","route"]}'
+    exit 0
+  fi
   case "$TERRARIUM_LXC_MODE" in
     show-fails)
       echo "cannot read config" >&2
@@ -30,20 +41,28 @@ if [ "$1" = "config" ] && [ "$2" = "show" ]; then
       exit 0
       ;;
     sticky-label)
-      printf '{"config":{"user.proxy":"https://leaked.example.test:8443"},"devices":{}}\\n'
+      printf '{"name":"temporary","type":"container","config":{"user.proxy":"https://leaked.example.test:8443"},"devices":{}}\\n'
       exit 0
       ;;
     remove-fails)
-      printf '{"config":{},"devices":{"public-http":{"type":"proxy"}}}\\n'
+      printf '{"name":"temporary","type":"container","config":{},"devices":{"public-http":{"type":"proxy"}}}\\n'
       exit 0
       ;;
     *)
-      printf '{"config":{},"devices":{}}\\n'
+      printf '{"name":"temporary","type":"container","config":{},"devices":{}}\\n'
       exit 0
       ;;
   esac
 fi
-if [ "$1" = "config" ] && [ "$2" = "unset" ]; then
+if [ "$1" = "config" ] && { [ "$2" = "set" ] || [ "$2" = "unset" ]; }; then
+  exit 0
+fi
+if [ "$1" = "config" ] && [ "$2" = "edit" ]; then
+  cat > "$TERRARIUM_LXC_LOG.state"
+  # Simulate LXD recalculating expanded config after editing local config.
+  sed 's/"expanded_config"/"ignored_previous_expansion"/' "$TERRARIUM_LXC_LOG.state" > "$TERRARIUM_LXC_LOG.next"
+  mv "$TERRARIUM_LXC_LOG.next" "$TERRARIUM_LXC_LOG.state"
+  cat "$TERRARIUM_LXC_LOG.state" >> "$TERRARIUM_LXC_LOG"
   exit 0
 fi
 if [ "$1" = "config" ] && [ "$2" = "device" ] && [ "$3" = "remove" ]; then
@@ -84,6 +103,13 @@ function runImageCreateWithFakeLxc(mode: string): { exitCode: number | null; std
 }
 
 describe("terrariumctl image", () => {
+  test("detaches inherited route profiles while preserving their other effective settings", () => {
+    const result = runImageCreateWithFakeLxc("inherited-profile");
+    expect(result.exitCode).toBe(0);
+    expect(result.log).toContain('"config":{"limits.cpu":"2"}');
+    expect(result.log).toContain('"profiles":["vm"]');
+    expect(result.log).toContain("publish reached");
+  });
   test("creates a temporary snapshot-backed sanitized image plan by default", () => {
     expect(buildImageCreatePlan("web-01", "golden-web", {}, { now: 123, pid: 456 })).toEqual({
       instance: "web-01",
@@ -91,14 +117,14 @@ describe("terrariumctl image", () => {
       source: "web-01/terrarium-golden-123",
       tempInstance: "terrarium-image-golden-web-456-123",
       snapshotToCreate: "terrarium-golden-123",
-      publishArgs: [lxc, "publish", "terrarium-image-golden-web-456-123", "--alias", "golden-web"]
+      publishArgs: [lxc, "--project", "default", "publish", "terrarium-image-golden-web-456-123", "--alias", "golden-web"]
     });
   });
 
   test("can publish an existing snapshot or live instance", () => {
     expect(buildImageCreatePlan("web-01", "golden-web", { snapshot: "known-good", reuse: true }, { now: 123, pid: 456 })).toMatchObject({
       source: "web-01/known-good",
-      publishArgs: [lxc, "publish", "terrarium-image-golden-web-456-123", "--alias", "golden-web", "--reuse"]
+      publishArgs: [lxc, "--project", "default", "publish", "terrarium-image-golden-web-456-123", "--alias", "golden-web", "--reuse"]
     });
     const livePlan = buildImageCreatePlan("web-01", "golden-web", { live: true }, { now: 123, pid: 456 });
     expect(livePlan).toMatchObject({ source: "web-01" });
@@ -115,7 +141,7 @@ describe("terrariumctl image", () => {
     const result = runImageCreateWithFakeLxc("show-fails");
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("command failed (17)");
+    expect(result.stderr).toContain("LXD query failed: cannot read config");
     expect(result.log).not.toContain("publish reached");
   });
 
@@ -123,7 +149,7 @@ describe("terrariumctl image", () => {
     const result = runImageCreateWithFakeLxc("bad-json");
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("failed to parse LXD config for temporary image source");
+    expect(result.stderr).toContain("JSON Parse error");
     expect(result.log).not.toContain("publish reached");
   });
 
@@ -139,7 +165,7 @@ describe("terrariumctl image", () => {
     const result = runImageCreateWithFakeLxc("remove-fails");
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("command failed (18)");
+    expect(result.stderr).toContain("LXD config failed: cannot remove proxy device");
     expect(result.log).not.toContain("publish reached");
   });
 });

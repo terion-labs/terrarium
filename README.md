@@ -11,19 +11,19 @@
 
 Managing secure, isolated infrastructure usually requires a lot of specialized knowledge. Terrarium changes that. It transforms a standard Ubuntu 24.04 or 26.04 VPS into a friendly, secure home for your applications, development environments, and AI agents—complete with a built-in time machine for undoing mistakes.
 
-Whether you're running complex Docker Compose stacks, giving AI agents room to experiment, or hosting your own web-based IDEs, Terrarium brings simplicity to operations that used to be complicated. It isolates your workloads in LXD containers, keeping your host system pristine and secure. If an experiment goes wrong or a service breaks, you don't have to rebuild everything from scratch. You can simply roll back in time using automated ZFS snapshots. 
+Whether you're running complex Docker Compose stacks, giving AI agents room to experiment, or hosting your own web-based IDEs, Terrarium brings simplicity to operations that used to be complicated. It isolates your workloads in LXD containers or Linux virtual machines, keeping your host system pristine and secure. If an experiment goes wrong or a service breaks, you don't have to rebuild everything from scratch. You can simply roll back in time using automated ZFS snapshots.
 
 With Terrarium, you get the freedom of a full VPS without the fear of turning your server into a shared blast radius. It makes advanced infrastructure management accessible, safe, and surprisingly forgiving.
 
 > [!TIP]
 > ### Technical details in short
-> 
-> This tool sets up and orchestrates LXD, Traefik, Firewall, Virtual Networking, clustering, ZFS and backups. 
-> 
-> LXD is a systen that runs LXC containers and VMs (we are focused on containers). LXC containers are Linux system containers that sit conceptually between Docker-style application containers and traditional VMs. Like Docker containers, they are lightweight and share the host kernel using Linux namespaces and cgroups. Unlike typical Docker usage, LXC is often used to run a full OS-like userspace with init, package management, services, users, and networking, giving a VM-like administration experience without hardware virtualization overhead. They can also run inside ordinary cloud VMs because they do not require nested virtualization, though their isolation is not as strong as a true VM because the kernel is shared with the host. 
-> 
-> Using ZFS brings to the mix cheap hot snapshots that give "time machine" like experience with ability to "rewind" containers state in small increments together with exportable backups. 
-> 
+>
+> This tool sets up and orchestrates LXD, Traefik, Firewall, Virtual Networking, clustering, ZFS and backups.
+>
+> LXD runs LXC containers and virtual machines. Terrarium supports both, using Linux cloud images for VMs. LXC containers are Linux system containers that sit conceptually between Docker-style application containers and traditional VMs. Like Docker containers, they are lightweight and share the host kernel using Linux namespaces and cgroups. Unlike typical Docker usage, LXC is often used to run a full OS-like userspace with init, package management, services, users, and networking, giving a VM-like administration experience without hardware virtualization overhead. They can also run inside ordinary cloud VMs because they do not require nested virtualization, though their isolation is not as strong as a true VM because the kernel is shared with the host.
+>
+> Using ZFS brings to the mix cheap hot snapshots that give "time machine" like experience with ability to "rewind" containers state in small increments together with exportable backups.
+>
 > Traefik is a reverse proxy that lives on host and can pass traffic in containers (in case of Terrarium - autoconfigurated via labels on containers). All this works on single node or in a cluster, that is built upon OVN and secure wireguard internal connections.
 
 ## 📚 Documentation
@@ -60,11 +60,11 @@ Your containers are never exposed directly to the internet. They live in a priva
 Mistakes happen. Terrarium automatically takes snapshots of your environments. If an AI agent deletes the wrong folder or an update breaks your app, you can rewind to a working state in seconds. For disaster recovery, Terrarium can even export these snapshots securely to S3.
 
 ### Visual Management
-You don't have to memorize a hundred command-line flags. Terrarium provides beautiful web interfaces: Cockpit for the host system, the LXD UI for your containers, and the Traefik dashboard for your network traffic.
+You don't have to memorize a hundred command-line flags. Terrarium provides beautiful web interfaces: Cockpit for the host system, the LXD UI for your containers and VMs, and the Traefik dashboard for your network traffic.
 
 ## 🖥️ Recommended Hardware
 
-Terrarium is designed to be lightweight, but giving your environments a bit of breathing room is always a good idea. 
+Terrarium is designed to be lightweight, but giving your environments a bit of breathing room is always a good idea.
 
 - **Minimum:** `2 vCPU`, `4 GB RAM`, and a separate `80 GB` disk for containers.
 - **Recommended:** `4 vCPU`, `8-16 GB RAM`, and a separate `150+ GB` disk.
@@ -81,3 +81,7 @@ Want to see what you can build? Check out our guides:
 
 ---
 *Ready to dive deeper? Check out the [full documentation](https://terion-name.github.io/terrarium/) to learn about storage strategies, custom domains, automated backups, and more.*
+
+### Linux virtual machines
+
+Run `trm launch ubuntu:24.04 app-vm --vm --wait` on a host with hardware virtualization. VM profiles, provisioning, HTTP/TCP/UDP routing, shared directories, snapshots, S3/Syncoid backups, recovery, golden images, and cold cluster moves use the same Terrarium workflows. See the [VM guide](docs/getting-started/virtual-machines.md).

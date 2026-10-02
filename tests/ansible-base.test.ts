@@ -158,7 +158,7 @@ describe("terrariumctl mount defaults", () => {
     const storageDocs = readFileSync(join(repoRoot, "docs/getting-started/external-shared-storage.md"), "utf8");
 
     expect(ctl).toContain("--container <name>");
-    expect(ctl).toContain("mount attach /host/path CONTAINER");
+    expect(ctl).toContain("mount attach /host/path INSTANCE");
     expect(ctl).toContain("mountAttachCmd(hostPath, instance");
     expect(mount).toContain("lookupInstanceRootIdmap");
     expect(mount).toContain("volatile.idmap.current");

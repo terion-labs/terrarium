@@ -1,8 +1,9 @@
 import { password } from "@inquirer/prompts";
-import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, statSync, realpathSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { FSTAB_PATH, heading, label, ManagedMount, MOUNTS_DIR, MOUNT_MARKER_PREFIX, success, value } from "./context";
 import { runAllowFailure, runText } from "../lib/common";
+import { lxcArgs, lxcCommand, readInstance, listInstances, vmCapability, waitForInstanceReady, type LxdInstance } from "../lib/lxd-instance";
 import { PREFIX } from "./context";
 
 /** Options that control how a host SMB/CIFS mount is presented on the Terrarium host. */
@@ -72,7 +73,7 @@ function requireAbsoluteHostPath(hostPath: string): string {
 function normalizeInstanceName(instance: string): string {
   const trimmed = instance.trim();
   if (!trimmed) {
-    throw new Error("LXD container name is required");
+    throw new Error("LXD instance name is required");
   }
   return trimmed;
 }
@@ -80,7 +81,7 @@ function normalizeInstanceName(instance: string): string {
 function requireAbsoluteInstancePath(instancePath: string): string {
   const trimmed = instancePath.trim();
   if (!trimmed.startsWith("/")) {
-    throw new Error("container mount path must be absolute");
+    throw new Error("instance mount path must be absolute");
   }
   return trimmed;
 }
@@ -163,9 +164,18 @@ function rootHostIdFromIdmap(entries: LxdIdmapEntry[], kind: "uid" | "gid"): str
 }
 
 async function lookupInstanceRootIdmap(instance: string): Promise<InstanceRootIdmap> {
+  const info = await readInstance(instance);
+  await assertLocalMountTarget(info);
+  if (info.type === "virtual-machine") {
+    await waitForInstanceReady(instance, { timeoutMs: 60_000 });
+    const uid = (await lxcCommand(["exec", instance, "--", "id", "-u", "terrarium"], { timeoutMs: 15_000 })).trim();
+    const gid = (await lxcCommand(["exec", instance, "--", "id", "-g", "terrarium"], { timeoutMs: 15_000 })).trim();
+    if (!/^\d+$/.test(uid) || !/^\d+$/.test(gid)) throw new Error(`${instance}: could not resolve the terrarium guest user's UID/GID`);
+    return { uid, gid };
+  }
   const rawValues = [
-    await runText(["lxc", "config", "get", instance, "volatile.idmap.current"], PREFIX),
-    await runText(["lxc", "config", "get", instance, "volatile.idmap.next"], PREFIX)
+    await lxcCommand(["config", "get", instance, "volatile.idmap.current"]),
+    await lxcCommand(["config", "get", instance, "volatile.idmap.next"])
   ];
 
   for (const raw of rawValues) {
@@ -193,6 +203,49 @@ async function lookupInstanceRootIdmap(instance: string): Promise<InstanceRootId
   }
 
   throw new Error(`failed to resolve unprivileged uid/gid mapping for LXD container ${instance}`);
+}
+
+async function assertLocalMountTarget(instance: LxdInstance): Promise<void> {
+  const host = await vmCapability();
+  if (host.clustered && instance.location !== host.member) throw new Error(`${instance.name} is on ${instance.location}; run mount commands on that member`);
+}
+
+export function mountConsumers(instances: LxdInstance[], hostPath: string, except?: string): string[] {
+  const canonical = (path: string) => (existsSync(path) ? realpathSync(path) : path).replace(/\/+$/, "");
+  const path = canonical(hostPath);
+  return instances.filter((instance) => instance.name !== except && Object.values(instance.expanded_devices).some((device) => {
+    const source = device.source?.startsWith("/") ? canonical(device.source) : undefined;
+    return device.type === "disk" && source && (source === path || source.startsWith(`${path}/`) || path.startsWith(`${source}/`));
+  })).map((instance) => instance.name);
+}
+
+async function assertMountUnused(hostPath: string, except?: string): Promise<void> {
+  const host = await vmCapability();
+  const instances = (await listInstances()).filter((instance) => !host.clustered || instance.location === host.member);
+  const consumers = mountConsumers(instances, hostPath, except);
+  if (consumers.length) throw new Error(`${hostPath} is used by ${consumers.join(", ")}; detach those disks before changing mount ownership or unmounting it`);
+}
+
+async function requiredHostCommand(args: string[]): Promise<void> {
+  const result = await runAllowFailure(args, { timeoutMs: 60_000 });
+  if (result.exitCode !== 0) throw new Error(`${args[0]} failed: ${result.stderr.trim() || result.stdout.trim()}`);
+}
+
+async function applyManagedMount(hostPath: string, current: string, next: string, restoreCredentials?: () => void): Promise<void> {
+  const mounted = await runAllowFailure(["mountpoint", "-q", hostPath]);
+  if (mounted.exitCode === 0) await requiredHostCommand(["umount", hostPath]);
+  writeFileSync(FSTAB_PATH, next, "utf8");
+  try {
+    await requiredHostCommand(["mount", hostPath]);
+  } catch (error) {
+    writeFileSync(FSTAB_PATH, current, "utf8");
+    restoreCredentials?.();
+    if (mounted.exitCode === 0) {
+      const restored = await runAllowFailure(["mount", hostPath], { timeoutMs: 60_000 });
+      if (restored.exitCode !== 0) throw new Error(`${error}; previous fstab restored but remount failed: ${restored.stderr.trim()}`);
+    }
+    throw error;
+  }
 }
 
 /** Escapes arbitrary text so it can be embedded safely into a dynamic regular expression. */
@@ -274,11 +327,12 @@ function ensureFlagOption(optionsList: string[], flag: string): string[] {
 
 async function remapManagedCifsMountForInstance(hostPath: string, instance: string): Promise<void> {
   const fstabCurrent = existsSync(FSTAB_PATH) ? readFileSync(FSTAB_PATH, "utf8") : "";
-  const mount = parseManagedMounts(fstabCurrent).find((candidate) => candidate.hostPath === hostPath);
+  const mount = parseManagedMounts(fstabCurrent).filter((candidate) => hostPath === candidate.hostPath || hostPath.startsWith(`${candidate.hostPath}/`)).sort((a, b) => b.hostPath.length - a.hostPath.length)[0];
   if (!mount || mount.protocol !== "cifs") {
     return;
   }
 
+  if ((await runAllowFailure(["mountpoint", "-q", mount.hostPath])).exitCode !== 0) throw new Error(`${mount.hostPath} is configured but not mounted; mount the share before attaching it`);
   const idmap = await lookupInstanceRootIdmap(instance);
   const optionsList = upsertMountOption(
     upsertMountOption(ensureFlagOption(ensureFlagOption(mount.options, "forceuid"), "forcegid"), "uid", idmap.uid),
@@ -289,13 +343,8 @@ async function remapManagedCifsMountForInstance(hostPath: string, instance: stri
     return;
   }
 
-  writeFileSync(FSTAB_PATH, replaceManagedBlock(fstabCurrent, mount.marker, renderManagedMountBlock(mount, optionsList)), "utf8");
-
-  const mounted = await runAllowFailure(["mountpoint", "-q", hostPath]);
-  if (mounted.exitCode === 0) {
-    await runText(["umount", hostPath], PREFIX);
-  }
-  await runText(["mount", hostPath], PREFIX);
+  await assertMountUnused(mount.hostPath, instance);
+  await applyManagedMount(mount.hostPath, fstabCurrent, replaceManagedBlock(fstabCurrent, mount.marker, renderManagedMountBlock(mount, optionsList)));
 }
 
 /**
@@ -324,6 +373,11 @@ export async function mountAddCmd(
     throw new Error("use either --password or --password-file, not both");
   }
 
+  await assertMountUnused(hostPath);
+  const instance = options.instance ? normalizeInstanceName(options.instance) : undefined;
+  if (instance) await assertLocalMountTarget(await readInstance(instance));
+  const instanceRoot = instance && (!options.uid || !options.gid) ? await lookupInstanceRootIdmap(instance) : undefined;
+
   const secret =
     passwordArg ||
     (options.passwordFile ? readFileSync(options.passwordFile, "utf8").replace(/\n+$/g, "") : undefined) ||
@@ -336,8 +390,6 @@ export async function mountAddCmd(
   mkdirSync(MOUNTS_DIR, { recursive: true, mode: 0o700 });
   mkdirSync(hostPath, { recursive: true, mode: 0o755 });
 
-  const instance = options.instance ? normalizeInstanceName(options.instance) : undefined;
-  const instanceRoot = instance && (!options.uid || !options.gid) ? await lookupInstanceRootIdmap(instance) : undefined;
   const uid = options.uid ?? instanceRoot?.uid;
   const gid = options.gid ?? instanceRoot?.gid;
 
@@ -362,6 +414,7 @@ export async function mountAddCmd(
   const entry = `${address} ${hostPath} ${protocol} ${optionsList.join(",")} 0 0`;
   const block = `# BEGIN ${marker}\n${entry}\n# END ${marker}`;
 
+  const previousCredentials = existsSync(credentialsPath) ? readFileSync(credentialsPath) : undefined;
   writeFileSync(credentialsPath, `username=${username}\npassword=${secret}\n`, "utf8");
   chmodSync(credentialsPath, 0o600);
 
@@ -369,14 +422,15 @@ export async function mountAddCmd(
   const withoutPreviousHostPathBlocks = parseManagedMounts(fstabCurrent)
     .filter((mount) => mount.hostPath === hostPath)
     .reduce((current, mount) => stripManagedBlock(current, mount.marker), fstabCurrent);
-  writeFileSync(FSTAB_PATH, replaceManagedBlock(withoutPreviousHostPathBlocks, marker, block), "utf8");
-
-  const mounted = await runAllowFailure(["mountpoint", "-q", hostPath]);
-  if (mounted.exitCode === 0) {
-    await runText(["umount", hostPath], PREFIX);
+  try {
+    await applyManagedMount(hostPath, fstabCurrent, replaceManagedBlock(withoutPreviousHostPathBlocks, marker, block), () => {
+      if (previousCredentials) writeFileSync(credentialsPath, previousCredentials, { mode: 0o600 });
+    });
+  } catch (error) {
+    if (previousCredentials) writeFileSync(credentialsPath, previousCredentials, { mode: 0o600 });
+    else unlinkSync(credentialsPath);
+    throw error;
   }
-
-  await runText(["mount", hostPath], PREFIX);
   if (instance) {
     await mountAttachCmd(hostPath, instance, {
       instancePath: options.instancePath,
@@ -401,31 +455,21 @@ export async function mountAttachCmd(hostPathArg: string, instanceArg: string, o
   const instancePath = requireAbsoluteInstancePath(options.instancePath || defaultInstancePath(hostPath));
   const device = normalizeDeviceName(options.device, hostPath);
 
-  await runText(["mountpoint", "-q", hostPath], PREFIX);
-  await runText(["lxc", "info", instance], PREFIX);
-  if (options.remapManagedMount !== false) {
-    await remapManagedCifsMountForInstance(hostPath, instance);
-  }
-
-  const add = await runAllowFailure([
-    "lxc",
-    "config",
-    "device",
-    "add",
-    instance,
-    device,
-    "disk",
-    `source=${hostPath}`,
-    `path=${instancePath}`
-  ]);
-  if (add.exitCode !== 0) {
-    const output = `${add.stderr}\n${add.stdout}`.toLowerCase();
-    if (!output.includes("already exists")) {
-      throw new Error(add.stderr.trim() || add.stdout.trim() || `failed to attach ${hostPath} to ${instance}`);
+  if (!existsSync(hostPath) || !statSync(hostPath).isDirectory()) throw new Error(`${hostPath} must be an existing host directory or mounted share`);
+  const info = await readInstance(instance);
+  await assertLocalMountTarget(info);
+  const existing = info.expanded_devices[device];
+  if (existing && (existing.type !== "disk" || existing.source !== hostPath || existing.path !== instancePath || existing.shift === "true")) throw new Error(`Device ${device} already has different settings; choose a new --device name`);
+  if (info.type === "virtual-machine") await waitForInstanceReady(instance, { timeoutMs: 60_000 });
+  if (options.remapManagedMount !== false) await remapManagedCifsMountForInstance(hostPath, instance);
+  if (!existing) await lxcCommand(["config", "device", "add", instance, device, "disk", `source=${hostPath}`, `path=${instancePath}`], { timeoutMs: 60_000 });
+  if (info.type === "virtual-machine") {
+    const quote = (text: string) => "'" + text.replaceAll("'", "'\\''") + "'";
+    const access = await runAllowFailure(lxcArgs("exec", instance, "--", "su", "-l", "terrarium", "-c", `test -r ${quote(instancePath)} && test -w ${quote(instancePath)}`), { timeoutMs: 15_000 });
+    if (access.exitCode !== 0) {
+      if (!existing) await lxcCommand(["config", "device", "remove", instance, device]);
+      throw new Error(`${instance}: terrarium cannot read and write ${instancePath}; set host directory permissions for the guest UID/GID and retry`);
     }
-    await runText(["lxc", "config", "device", "set", instance, device, "source", hostPath], PREFIX);
-    await runText(["lxc", "config", "device", "set", instance, device, "path", instancePath], PREFIX);
-    await runAllowFailure(["lxc", "config", "device", "unset", instance, device, "shift"]);
   }
 
   console.log(success(`Attached ${hostPath} to ${instance}:${instancePath}`));
@@ -469,6 +513,7 @@ export async function mountRemoveCmd(hostPathArg: string, confirmDestructive: (m
     throw new Error(`no Terrarium-managed mount found for ${hostPath}`);
   }
 
+  await assertMountUnused(hostPath);
   await confirmDestructive(`Remove managed mount ${mount.address} at ${hostPath}?`);
 
   const mounted = await runAllowFailure(["mountpoint", "-q", hostPath]);

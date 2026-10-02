@@ -83,6 +83,7 @@ export default defineConfig({
           { text: "Overview", link: "/getting-started/" },
           { text: "Installation", link: "/getting-started/installation" },
           { text: "Creating Your First Instance", link: "/getting-started/creating-first-instance" },
+          { text: "Linux Virtual Machines", link: "/getting-started/virtual-machines" },
           { text: "Templating Containers with trm launch", link: "/getting-started/templating" },
           { text: "Storage and Sizing", link: "/getting-started/storage" },
           { text: "Domains and Authentication", link: "/getting-started/domains-and-auth" },

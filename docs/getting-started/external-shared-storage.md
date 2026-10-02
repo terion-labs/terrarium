@@ -84,3 +84,9 @@ Because Hetzner Storage Boxes use standard SMB protocols, you can natively mount
 ### When Should I Not Use This?
 External storage is slower than the local ZFS drive. 
 If your containers need to rapidly read and write thousands of small files (like a database or an active code repository), do not put them on an external SMB drive. Use [Local Shared Data](./shared-data-between-containers.md) instead.
+
+## Attach to a VM
+
+Use `trm mount add ... --instance app-vm --instance-path /mnt/data` or `trm mount attach /srv/shared/data app-vm /mnt/data`. A running VM needs a working LXD agent. Terrarium resolves the `terrarium` account's guest UID/GID and verifies read/write access after attaching the directory through LXD. Ordinary host directories are supported too; their permissions must already allow that guest account.
+
+A CIFS ownership change is rejected if another container or VM uses the share. Use a separate host mount point when consumers need different ownership. `--container` and `--container-path` remain aliases for the new instance flags; conflicting values are rejected. Run mount commands on the member that owns the instance. Detach host directory devices before moving an instance to another member.

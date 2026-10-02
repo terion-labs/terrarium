@@ -1,8 +1,8 @@
 # Terrarium Architecture
 
-If you're curious about how Terrarium works under the hood, you're in the right place. 
+If you're curious about how Terrarium works under the hood, you're in the right place.
 
-Terrarium takes a single Ubuntu 24.04 host and turns it into a hardened control plane for isolated LXC container environments. It handles the networking, the ZFS-backed time machine, and the automated off-site backups so you don't have to.
+Terrarium takes a single Ubuntu 24.04 host and turns it into a hardened control plane for LXD containers and Linux virtual machines. It handles the networking, the ZFS-backed time machine, and the automated off-site backups so you don't have to.
 
 ## The Core Layers
 
@@ -20,7 +20,7 @@ Terrarium is built on four main layers:
 ## Configuration & Storage
 
 ### Where Does the Config Live?
-Terrarium is smart about not reinventing the wheel. Instead of running a complex secondary database just to store your settings, it uses LXD's built-in, highly available database (`dqlite`). 
+Terrarium is smart about not reinventing the wheel. Instead of running a complex secondary database just to store your settings, it uses LXD's built-in, highly available database (`dqlite`).
 - The canonical config lives in LXD's dqlite-backed project store. You can create a root-only YAML export at `/etc/terrarium/config.yaml` with `terrariumctl config export` when you need a recovery/debug copy.
 - Whenever you make changes using commands like `terrariumctl set domains`, Terrarium updates the LXD database and tells Ansible to seamlessly apply the changes.
 
@@ -34,16 +34,16 @@ Terrarium relies heavily on OpenZFS to provide its magic time machine and fast c
 
 Terrarium's networking is designed around a single principle: **Private by Default**.
 
-- Your containers live on an isolated virtual network (`terrarium-ovn`). 
+- Your instances live on an isolated virtual network (`terrarium-ovn`).
 - They have zero direct exposure to the public internet.
-- A service running on port `8080` inside a container is only accessible inside that container.
+- Guest services are accessible on the private network. Publication through Traefik is explicit.
 
 ### How Traffic Gets In (The Proxy Model)
-To expose an app to the web, you add a simple label to the container (e.g., `user.proxy="https://myapp.domain.com"`). 
+To expose an app to the web, you add a simple label to the instance (e.g., `user.proxy="https://myapp.domain.com"`).
 
-Every minute, Terrarium scans your containers. When it sees that label, it automatically:
-1. Creates an internal bridge to the container.
-2. Tells Traefik to route internet traffic from `myapp.domain.com` through that bridge.
+Every minute, Terrarium scans your instances. When it sees that label, it automatically:
+1. Creates a loopback proxy device. VM routes use a small managed container on each ingress member to reach the VM over OVN.
+2. Tells Traefik to route internet traffic from `myapp.domain.com` through that private backend.
 3. Provisions a Let's Encrypt SSL certificate.
 4. *(Optional)* Wraps the whole route in a Single Sign-On (OIDC) authentication gate if you added the `@auth` tag.
 
@@ -70,3 +70,9 @@ Terrarium gives you three layers of safety:
    *(Optional)* If you have a second server, Terrarium can constantly mirror your ZFS state to it.
 3. **Disaster Recovery (S3 Exports)**
    *(Optional)* Terrarium can compress your snapshots and stream them directly to an S3 bucket (like AWS or Cloudflare R2). If your server catches on fire, you can restore your exact environments onto a brand new machine.
+
+## Native virtual machines
+
+VMs run their own Linux kernel through LXD’s QEMU driver and require working hardware virtualization. The `vm` and `vm-dev` profiles provide the same `terrarium` account, Python environment, cloud-init provisioning and OVN network as container workflows. `vm-dev` grants passwordless sudo. Docker runs inside the guest without container nesting options.
+
+A VM root backup contains a ZFS filesystem and a sibling block volume captured in one snapshot transaction. S3 manifests publish only complete, verified sets; Syncoid transfers both components. See [VMs](./getting-started/virtual-machines.md) and [backup recovery](./operations/backups-and-restore.md).

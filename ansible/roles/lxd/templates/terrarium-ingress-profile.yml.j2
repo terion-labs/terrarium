@@ -1,0 +1,18 @@
+name: terrarium-ingress
+description: Internal per-member OVN namespace for Terrarium VM ingress
+config:
+  boot.autostart: "true"
+  cluster.evacuate: stop
+  limits.cpu: "1"
+  limits.memory: 256MiB
+  security.idmap.isolated: "true"
+  user.terrarium.role: ingress
+devices:
+  eth0:
+    type: nic
+    network: {{ terrarium_lxd_network_name }}
+  root:
+    type: disk
+    path: /
+    pool: {{ terrarium_lxd_pool_name }}
+    size: 4GiB

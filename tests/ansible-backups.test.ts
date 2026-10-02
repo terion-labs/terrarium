@@ -5,13 +5,13 @@ import { join } from "node:path";
 const repoRoot = join(import.meta.dir, "..");
 
 describe("backup role", () => {
-  test("syncoid owns the configured replica mirror", () => {
+  test("replication service uses the complete-set controller", () => {
     const service = readFileSync(join(repoRoot, "ansible/roles/backups/templates/terrarium-syncoid.service.j2"), "utf8");
-    expect(service).toContain("ExecStart=/usr/sbin/syncoid");
-    expect(service).toContain("--recursive");
-    expect(service).toContain("--force-delete");
-    expect(service).toContain("{{ terrarium_lxd_pool_name }}/containers");
-    expect(service).toContain("{{ terrarium_syncoid_target }}:{{ terrarium_syncoid_target_dataset }}");
+    expect(service).toContain("ExecStart=/usr/local/bin/terrariumctl backup replicate");
+    const sanoid = readFileSync(join(repoRoot, "ansible/roles/backups/templates/sanoid.conf.j2"), "utf8");
+    expect(sanoid).toContain("/virtual-machines]");
+    expect(sanoid).toContain("recursive = zfs");
+    expect(sanoid).toContain("process_children_only = no");
   });
 
   test("installs AWS CLI fallback from a pinned archive through private staging", () => {

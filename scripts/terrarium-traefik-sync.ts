@@ -4,6 +4,9 @@ import { dirname, join } from "node:path";
 import { chownSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { configString, loadConfig, readJsonFile, runAllowFailure, runText, writeIfChanged, writeJsonFile, yamlStringify } from "./lib/common";
 
+import { lxcArgs, parseInstance, vmCapability, isInfrastructureInstance } from "./lib/lxd-instance";
+import { ensureIngressInstance, managedInstanceAddress } from "./lib/lxd-ingress";
+
 const PREFIX = "terrariumctl proxy sync";
 const DEFAULT_CONFIG_PATH = "/etc/terrarium/config.yaml";
 const STATIC_CONFIG_PATH = "/etc/traefik/traefik.yml";
@@ -44,10 +47,12 @@ type LxcAddress = {
 };
 
 type LxcNetwork = {
+  hwaddr?: string;
   addresses?: LxcAddress[];
 };
 
 type LxdDevice = {
+  [key: string]: string | undefined;
   type?: string;
   listen?: string;
   connect?: string;
@@ -55,6 +60,10 @@ type LxdDevice = {
 
 export type LxcInstance = {
   name?: string;
+  type?: "container" | "virtual-machine";
+  status?: string;
+  location?: string;
+  expanded_config?: Record<string, string>;
   config?: Record<string, string>;
   devices?: Record<string, LxdDevice>;
   expanded_devices?: Record<string, LxdDevice>;
@@ -98,6 +107,8 @@ export type ProxyBackendSpec = {
   proto: ProxyBackendProtocol;
   targetPort: number;
   deviceName: string;
+  deviceInstance?: string;
+  targetAddress?: string;
 };
 
 export type ProxyBackendStateEntry = ProxyBackendSpec & {
@@ -737,7 +748,7 @@ async function enrichInstanceState(containers: LxcInstance[]): Promise<LxcInstan
       continue;
     }
 
-    const response = await runAllowFailure(["timeout", "15s", "lxc", "query", `/1.0/instances/${container.name}/state`]);
+    const response = await runAllowFailure(lxcArgs("query", `/1.0/instances/${encodeURIComponent(container.name)}/state?project=default`), { timeoutMs: 15_000 });
     if (response.exitCode !== 0) {
       enriched.push(container);
       continue;
@@ -816,7 +827,7 @@ async function syncUfw(desiredPorts: DesiredPort[]): Promise<string[]> {
 }
 
 async function loadInstancesForProxySync(): Promise<LxcInstance[]> {
-  const result = await runAllowFailure(["timeout", "15s", "lxc", "list", "-f", "json"]);
+  const result = await runAllowFailure(lxcArgs("list", "-f", "json"), { timeoutMs: 15_000 });
   if (result.exitCode !== 0) {
     throw new Error(`LXD is not ready; refusing to overwrite proxy configuration: ${compactCommandOutput(result.stderr || result.stdout)}`);
   }
@@ -826,11 +837,12 @@ async function loadInstancesForProxySync(): Promise<LxcInstance[]> {
     throw new Error(`LXD output was not valid JSON; refusing to overwrite proxy configuration: ${compactCommandOutput(result.stdout)}`);
   }
 
-  return parsed;
+  if (!Array.isArray(parsed)) throw new Error("Invalid LXD instance list");
+  return parsed.map((item) => ({ ...item, ...parseInstance(item), config: { ...item.config, ...item.expanded_config } }));
 }
 
 function containersWithProxyLabels(containers: LxcInstance[]): LxcInstance[] {
-  return containers.filter((container) => (container.config?.["user.proxy"]?.trim() ?? "").length > 0);
+  return containers.filter((container) => !["ingress", "image-staging"].includes(container.config?.["user.terrarium.role"] ?? "") && !container.config?.["user.terrarium.quarantined-nics"] && (container.config?.["user.proxy"]?.trim() ?? "").length > 0);
 }
 
 function proxyBackendKey(containerName: string, proto: ProxyBackendProtocol, targetPort: number): string {
@@ -935,10 +947,10 @@ function proxyBackendDeviceNamesByContainer(specs: ProxyBackendSpec[]): Map<stri
   const names = new Map<string, Set<string>>();
 
   for (const spec of specs) {
-    let containerNames = names.get(spec.containerName);
+    let containerNames = names.get(spec.deviceInstance ?? spec.containerName);
     if (!containerNames) {
       containerNames = new Set<string>();
-      names.set(spec.containerName, containerNames);
+      names.set(spec.deviceInstance ?? spec.containerName, containerNames);
     }
     containerNames.add(spec.deviceName);
   }
@@ -953,12 +965,12 @@ export function findStaleExistingProxyBackendDevices(
   const desiredNamesByContainer = proxyBackendDeviceNamesByContainer(specs);
   return existingDevices.filter((device) => {
     const desiredNames = desiredNamesByContainer.get(device.containerName);
-    return desiredNames !== undefined && !desiredNames.has(device.deviceName);
+    return !desiredNames?.has(device.deviceName);
   });
 }
 
-function proxyBackendDeviceIdentity(device: { containerName: string; deviceName: string }): string {
-  return `${device.containerName}\0${device.deviceName}`;
+function proxyBackendDeviceIdentity(device: { containerName: string; deviceName: string; deviceInstance?: string }): string {
+  return `${device.deviceInstance ?? device.containerName}\0${device.deviceName}`;
 }
 
 export function planProxyBackendEntries(
@@ -1000,7 +1012,7 @@ export function planProxyBackendEntries(
 
   const portAvailableForSpec = (port: number, spec: ProxyBackendSpec): boolean => {
     const devices = keptDevicesByPort.get(port) ?? [];
-    return devices.every((device) => device.containerName === spec.containerName && device.deviceName === spec.deviceName);
+    return devices.every((device) => proxyBackendDeviceIdentity(device) === proxyBackendDeviceIdentity(spec));
   };
 
   for (const spec of specs) {
@@ -1068,7 +1080,7 @@ function backendListenAddress(entry: ProxyBackendStateEntry): string {
 }
 
 function backendConnectAddress(entry: ProxyBackendStateEntry): string {
-  return `${entry.proto}:127.0.0.1:${entry.targetPort}`;
+  return `${entry.proto}:${entry.targetAddress ?? "127.0.0.1"}:${entry.targetPort}`;
 }
 
 function deviceMissing(output: string): boolean {
@@ -1077,24 +1089,21 @@ function deviceMissing(output: string): boolean {
 }
 
 async function readLxdProxyDeviceValue(containerName: string, deviceName: string, key: string): Promise<string | null> {
-  const result = await runAllowFailure(["timeout", "15s", "lxc", "config", "device", "get", containerName, deviceName, key]);
+  const result = await runAllowFailure(lxcArgs("config", "device", "get", containerName, deviceName, key), { timeoutMs: 15_000 });
   if (result.exitCode !== 0) {
     return null;
   }
   return result.stdout.trim();
 }
 
-async function removeLxdProxyDevice(entry: { containerName: string; deviceName: string }): Promise<string | null> {
-  const result = await runAllowFailure([
-    "timeout",
-    "30s",
-    "lxc",
+async function removeLxdProxyDevice(entry: { containerName: string; deviceName: string; deviceInstance?: string }): Promise<string | null> {
+  const result = await runAllowFailure(lxcArgs(
     "config",
     "device",
     "remove",
-    entry.containerName,
+    entry.deviceInstance ?? entry.containerName,
     entry.deviceName
-  ]);
+  ), { timeoutMs: 30_000 });
   if (result.exitCode === 0 || deviceMissing(result.stderr || result.stdout)) {
     return null;
   }
@@ -1104,8 +1113,8 @@ async function removeLxdProxyDevice(entry: { containerName: string; deviceName: 
 async function ensureLxdProxyDevice(entry: ProxyBackendStateEntry): Promise<string | null> {
   const expectedListen = backendListenAddress(entry);
   const expectedConnect = backendConnectAddress(entry);
-  const listen = await readLxdProxyDeviceValue(entry.containerName, entry.deviceName, "listen");
-  const connect = await readLxdProxyDeviceValue(entry.containerName, entry.deviceName, "connect");
+  const listen = await readLxdProxyDeviceValue(entry.deviceInstance ?? entry.containerName, entry.deviceName, "listen");
+  const connect = await readLxdProxyDeviceValue(entry.deviceInstance ?? entry.containerName, entry.deviceName, "connect");
   if (listen === expectedListen && connect === expectedConnect) {
     return null;
   }
@@ -1117,20 +1126,17 @@ async function ensureLxdProxyDevice(entry: ProxyBackendStateEntry): Promise<stri
     }
   }
 
-  const result = await runAllowFailure([
-    "timeout",
-    "30s",
-    "lxc",
+  const result = await runAllowFailure(lxcArgs(
     "config",
     "device",
     "add",
-    entry.containerName,
+    entry.deviceInstance ?? entry.containerName,
     entry.deviceName,
     "proxy",
     `listen=${expectedListen}`,
     `connect=${expectedConnect}`,
     "bind=host"
-  ]);
+  ), { timeoutMs: 30_000 });
   if (result.exitCode !== 0) {
     return `failed to add LXD proxy device ${entry.containerName}/${entry.deviceName}: ${compactCommandOutput(result.stderr || result.stdout)}`;
   }
@@ -1138,8 +1144,8 @@ async function ensureLxdProxyDevice(entry: ProxyBackendStateEntry): Promise<stri
   return null;
 }
 
-async function syncLxdProxyBackends(containers: LxcInstance[]): Promise<{ targets: Record<string, ProxyBackendTarget>; errors: string[] }> {
-  const specs = collectDesiredProxyBackendSpecs(containers);
+async function syncLxdProxyBackends(containers: LxcInstance[], specs: ProxyBackendSpec[]): Promise<{ targets: Record<string, ProxyBackendTarget>; errors: string[] }> {
+  const localNames = new Set(containers.map((instance) => instance.name));
   const desiredKeys = new Set(specs.map((spec) => spec.key));
   const previous = loadProxyBackendState();
   const previousByKey = new Map<string, ProxyBackendStateEntry>();
@@ -1162,7 +1168,7 @@ async function syncLxdProxyBackends(containers: LxcInstance[]): Promise<{ target
     if (!previousByKey.has(entry.key)) {
       previousByKey.set(entry.key, entry);
     }
-    if (!desiredKeys.has(entry.key)) {
+    if (!desiredKeys.has(entry.key) && localNames.has(entry.deviceInstance ?? entry.containerName)) {
       const removeError = await removeLxdProxyDevice(entry);
       if (removeError) {
         errors.push(removeError);
@@ -1182,7 +1188,7 @@ async function syncLxdProxyBackends(containers: LxcInstance[]): Promise<{ target
   for (const entry of plannedEntries) {
     const previousEntry = previousByKey.get(entry.key);
 
-    if (previousEntry && previousEntry.deviceName !== entry.deviceName) {
+    if (previousEntry && proxyBackendDeviceIdentity(previousEntry) !== proxyBackendDeviceIdentity(entry) && localNames.has(previousEntry.deviceInstance ?? previousEntry.containerName)) {
       const removeError = await removeLxdProxyDevice(previousEntry);
       if (removeError) {
         errors.push(removeError);
@@ -1213,6 +1219,38 @@ async function syncLxdProxyBackends(containers: LxcInstance[]): Promise<{ target
   );
 
   return { targets, errors };
+}
+
+/** Resolve placement each run so moves, DHCP changes and stopped guests cannot leave stale routes. */
+async function prepareProxyBackends(instances: LxcInstance[], config: Record<string, unknown>): Promise<{ localInstances: LxcInstance[]; routable: LxcInstance[]; specs: ProxyBackendSpec[] }> {
+  const host = await vmCapability();
+  const network = configString(config, "terrarium_lxd_network_name", "terrarium-ovn");
+  const localInstances = instances.filter((instance) => !host.clustered || instance.location === host.member);
+  const routable: LxcInstance[] = [];
+  const specs: ProxyBackendSpec[] = [];
+  let helper: string | undefined;
+  for (const instance of containersWithProxyLabels(instances)) {
+    if (instance.status?.toLowerCase() !== "running") continue;
+    const desired = collectDesiredProxyBackendSpecs([instance]);
+    if (instance.type === "container" && (!host.clustered || instance.location === host.member)) {
+      specs.push(...desired);
+      routable.push(instance);
+      continue;
+    }
+    const address = managedInstanceAddress(parseInstance(instance), network, instance.state?.network ?? {});
+    if (!address) {
+      console.warn(`${PREFIX}: ${instance.name}: waiting for an IPv4 address on ${network}; routes withdrawn`);
+      continue;
+    }
+    if (!helper) {
+      const ingress = await ensureIngressInstance(host.member, network);
+      helper = ingress.name;
+      if (!localInstances.some((item) => item.name === helper)) localInstances.push(ingress);
+    }
+    specs.push(...desired.map((spec) => ({ ...spec, deviceInstance: helper, targetAddress: address })));
+    routable.push(instance);
+  }
+  return { localInstances, routable, specs };
 }
 
 function routeHostAllowedForManagedAuth(host: string, rootDomain: string, manageDomain: string): boolean {
@@ -1990,8 +2028,9 @@ export async function proxySyncCmd(configPath = DEFAULT_CONFIG_PATH): Promise<vo
   await withProxySyncLock(async () => {
     const config = loadConfig(configPath, PREFIX);
     const containers = await enrichInstanceState(await loadInstancesForProxySync());
-    const { targets: backendTargets, errors: backendErrors } = await syncLxdProxyBackends(containers);
-    const { dynamicYaml, extraEntrypoints, ufwPorts, authProfiles, errors } = buildDynamicConfig(containers, config, backendTargets);
+    const prepared = await prepareProxyBackends(containers, config);
+    const { targets: backendTargets, errors: backendErrors } = await syncLxdProxyBackends(prepared.localInstances, prepared.specs);
+    const { dynamicYaml, extraEntrypoints, ufwPorts, authProfiles, errors } = buildDynamicConfig(prepared.routable, config, backendTargets);
     const staticYaml = buildStaticConfig(config, extraEntrypoints);
 
     assertProxySyncSucceeded({

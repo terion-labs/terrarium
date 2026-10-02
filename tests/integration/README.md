@@ -148,3 +148,7 @@ tests/integration/output/<run-slug>/
 The resource manifest in that directory is also what `--cleanup-only` uses.
 Successful runs clean resources automatically. Failed runs also try to collect
 host artifacts before teardown unless `--keep-on-failure` is set.
+
+## Linux VM integration
+
+Use `bun run integration:vm` for the native VM suite on an existing KVM-capable two-member lab. It supports direct SSH hosts and Incus VMs reached through an SSH host. See [VM integration setup and coverage](./vm/README.md).
